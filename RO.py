@@ -96,61 +96,69 @@ class UltimateGiTaeSystem:
         print(f"      (손절 ${s['stop']:.2f} | 익절 ${s['exit_l']:.2f} | 손익비 {rr_ratio:.1f} | 상관성 {s['max_corr']:.2f})")
         print("")
 
-    def generate_html_report(self, macro_data, top_3, excluded):
-        """[날짜별 기록 저장 버전] 웹 리포트 생성"""
+    def generate_html_report(self, macro_data, indices_results, gold_list, top_3, excluded):
+        """[방대한 데이터 통합] 웹 리포트 생성"""
         today_str = datetime.now().strftime("%Y%m%d")
         full_now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        
-        # Reports 폴더 생성
         os.makedirs("Reports", exist_ok=True)
         filename = f"Reports/Report_{today_str}.html"
-        
+
+        def make_table(data_list, highlight=False):
+            if not data_list: return "<p>포착된 종목 없음</p>"
+            rows = ""
+            for r in data_list:
+                rr = abs((r['close']-r['exit_l'])/(r['close']-r['stop'])) if abs(r['close']-r['stop'])>0 else 0
+                unit = int(self.risk_money / (r['atr'] * 2 * self.usd_krw))
+                rows += f"<tr class='{'rank-1' if highlight else ''}'><td>{r['ticker']}</td><td>{SECTOR_MAP.get(r['sector'], r['sector'])}</td><td>{r['score']}</td><td>${r['close']:.2f}</td><td>{unit}주</td><td>{rr:.1f}</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>"
+            return f"<table><tr><th>티커</th><th>섹터</th><th>점수</th><th>현재가</th><th>수량</th><th>손익비</th><th>상관성</th><th>3M수익</th></tr>{rows}</table>"
+
         html = f"""
         <!DOCTYPE html>
         <html lang="ko">
         <head>
             <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>기태 리포트_{today_str}</title>
+            <title>기태 퀀트 리포트_{today_str}</title>
             <style>
-                body {{ font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }}
-                .container {{ max-width: 1100px; margin: auto; }}
-                .card {{ background: #2d2d2d; border-radius: 12px; padding: 20px; margin-bottom: 20px; }}
-                h1, h2 {{ color: #f1c40f; border-bottom: 2px solid #3d3d3d; padding-bottom: 10px; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-                th, td {{ border: 1px solid #444; padding: 12px; text-align: left; }}
-                th {{ background: #3d3d3d; color: #f1c40f; }}
+                body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }}
+                .container {{ max-width: 1200px; margin: auto; }}
+                .card {{ background: #1e1e1e; border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #333; }}
+                h1 {{ color: #f1c40f; text-align: center; margin-bottom: 30px; }}
+                h2 {{ color: #f1c40f; border-left: 5px solid #f1c40f; padding-left: 15px; margin-bottom: 15px; font-size: 1.4em; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }}
+                th, td {{ border: 1px solid #333; padding: 12px; text-align: left; }}
+                th {{ background: #2c2c2c; color: #f1c40f; }}
                 .rank-1 {{ background: rgba(241, 196, 15, 0.1); }}
+                .bull {{ color: #ff4757; }} .bear {{ color: #2e86de; }}
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>📊 기태 님 슈퍼리드 퀀트 리포트 ({full_now})</h1>
+                <h1>📊 기태 님 슈퍼리드 전수조사 리포트 ({full_now})</h1>
                 <div class="card">
-                    <h2>[0] 시장 상태</h2>
+                    <h2>[0] 글로벌 시장 요약</h2>
                     <table><tr><th>항목</th><th>현재가</th><th>변동</th><th>상태</th></tr>
-                    {"".join(f"<tr><td>{n}</td><td>{v['curr']:.2f}</td><td>{v['pct']:+.2f}%</td><td>{v['status']}</td></tr>" for n, v in macro_data.items())}
+                    {"".join(f"<tr><td>{n}</td><td>{v['curr']:.2f}</td><td class='{'bull' if v['pct']>0 else 'bear'}'>{v['pct']:+.2f}%</td><td>{v['status']}</td></tr>" for n, v in macro_data.items())}
                     </table>
                 </div>
-                <div class="card">
-                    <h2>[4] 최종 추천 TOP 3</h2>
-                    <table><tr><th>순위</th><th>티커</th><th>섹터</th><th>점수</th><th>수량</th><th>손익비</th></tr>
-                    {"".join(f"<tr class='rank-1'><td>{i}위</td><td>{r['ticker']}</td><td>{SECTOR_MAP.get(r['sector'], r['sector'])}</td><td>{r['score']}</td><td>{int(self.risk_money / (r['atr'] * 2 * self.usd_krw))}주</td><td>{abs((r['close']-r['exit_l'])/(r['close']-r['stop'])):.1f}</td></tr>" for i, r in enumerate(top_3.to_dict('records'), 1))}
-                    </table>
-                </div>
+                <div class="card"><h2>[1] 최종 추천 TOP 3 (안전 분산)</h2>{make_table(top_3.to_dict('records'), True)}</div>
+                <div class="card"><h2>[2] 초엄격 '슈퍼리드' 골든 리스트</h2>{make_table(gold_list)}</div>
+                <div class="card"><h2>[3-1] 반도체(SOX) 전수조사</h2>{make_table(indices_results['2-1. 반도체(SOX)'])}</div>
+                <div class="card"><h2>[3-2] 나스닥100 전수조사</h2>{make_table(indices_results['2-2. 나스닥100'])}</div>
+                <div class="card"><h2>[3-3] S&P 500 전수조사</h2>{make_table(indices_results['2-3. S&P 500'])}</div>
+                <div class="card"><h2>[4] 중복 위험 종목 (High Correlation)</h2>{make_table(excluded.head(10).to_dict('records'))}</div>
             </div>
         </body>
         </html>
         """
-        # 1. index.html (최신용) 2. Reports/Report_날짜.html (보관용) 저장
         for path in ["index.html", filename]:
             with open(path, "w", encoding="utf-8") as f: f.write(html)
-        print(f">>> [시스템] 웹 리포트 2종 생성 완료 (index.html, {filename})")
+        print(f">>> [시스템] 날짜별 웹 리포트 생성 완료 ({filename})")
 
     def auto_git_push(self):
         try:
-            print(">>> [시스템] GitHub 업로드 중...")
+            print(">>> [시스템] GitHub 업로드 중 (파일이 많아 시간이 소요될 수 있습니다)...")
             subprocess.run(["git", "add", "."], check=True)
-            subprocess.run(["git", "commit", "-m", f"Report Update: {datetime.now().strftime('%Y%m%d')}"], check=True)
+            subprocess.run(["git", "commit", "-m", f"Full Report Update: {datetime.now().strftime('%Y%m%d')}"], check=True)
             subprocess.run(["git", "push"], check=True)
             print(">>> [알림] 업로드 성공! https://nd2222.github.io/my-quant/")
         except Exception as e: print(f">>> [오류] 업로드 실패: {e}")
@@ -165,9 +173,8 @@ class UltimateGiTaeSystem:
         spy_perf = (data['^GSPC']['Close'].iloc[-1] / data['^GSPC']['Close'].iloc[-63]) - 1
         holdings_data = {t: data[t]['Close'].dropna() for t in my_tickers}
 
-        # [0] 시장 요약
         macro_results = {}
-        print("\n" + "="*95 + "\n [0] 글로벌 거시 지표 및 시장 상태 요약\n" + "-"*95)
+        print("\n" + "="*95 + "\n [0] 글로벌 거시 지표 요약\n" + "-"*95)
         for ticker, name in MACRO_ASSETS.items():
             if ticker in data.columns.levels[0]:
                 d = data[ticker].dropna()
@@ -176,24 +183,13 @@ class UltimateGiTaeSystem:
                 macro_results[name] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
                 print(f" ● {name:<15}: {curr:>10.2f} ({macro_results[name]['pct']:>+5.2f}%) | {status}")
 
-        # [1] 보유 종목
-        print("\n" + "="*95 + "\n [1] 현재 보유 종목 정밀 진단\n" + "-"*95)
-        for pos in MY_POSITIONS:
-            t, df = pos['ticker'], self.calculate_indicators(data[pos['ticker']].dropna())
-            if df is not None:
-                curr = df.iloc[-1]
-                entry_atr = df.loc[df.index <= pos['entry_date']]['atr'].iloc[-1]
-                print(f" ● {t:<5} | 수익 {(curr['Close']/pos['price']-1)*100:>5.1f}% | 현재가 ${curr['Close']:.2f}")
-
-        # [2] 지수별 분석 (기태님이 원하신 상세 리포트 구조)
         all_signals = []
         indices_to_scan = [("2-1. 반도체(SOX)", sox_list), ("2-2. 나스닥100", nq_list), ("2-3. S&P 500", sp_list)]
+        web_indices_results = {name: [] for name, _ in indices_to_scan}
         
         for idx_name, t_list in indices_to_scan:
-            print("\n" + "="*95 + f"\n [{idx_name}] 전수 조사 결과 (총 {len(t_list)}개 분석)\n" + "-"*95)
-            curr_found = 0
+            print("\n" + "="*95 + f"\n [{idx_name}] 전수 조사 결과\n" + "-"*95)
             for i, t in enumerate(t_list, 1):
-                # 실시간 로딩 현황 표시
                 sys.stdout.write(f"\r  ▶ {idx_name} 분석 진행률: {i}/{len(t_list)} ({t:<5})")
                 sys.stdout.flush()
                 
@@ -211,21 +207,22 @@ class UltimateGiTaeSystem:
                          'sector': sp_sectors.get(t, "Technology" if t in sox_list else "기타"), 
                          'max_corr': max_corr, 'stop': df.iloc[-1]['Close']-(2*df.iloc[-1]['atr'])}
                     all_signals.append(s)
-                    print("\n") # 로딩바 아래로 상세 정보 출력
+                    web_indices_results[idx_name].append(s)
+                    print("\n")
                     self.print_detailed_row(s)
-                    curr_found += 1
-            print(f"\n  >>> {idx_name}: 총 {curr_found}개 종목 포착.")
+            print(f"\n  >>> {idx_name}: 총 {len(web_indices_results[idx_name])}개 포착.")
 
-        # [4] 최종 결과 및 업로드
-        print("\n" + "="*95 + "\n [4] 최종 추천 TOP 3 및 자동 업데이트\n" + "-"*95)
         df_all = pd.DataFrame(all_signals).drop_duplicates('ticker')
         if not df_all.empty:
+            gold_list = df_all[df_all['score'] >= 130].sort_values('score', ascending=False).to_dict('records')
             passed = df_all[df_all['max_corr'] < 0.5].sort_values('score', ascending=False)
             excluded = df_all[df_all['max_corr'] >= 0.5].sort_values('score', ascending=False)
             top_3 = passed.groupby('sector').head(1).sort_values('score', ascending=False).head(3)
+            
+            print("\n" + "="*95 + "\n [4] 최종 추천 및 자동 업데이트\n" + "-"*95)
             for i, r in enumerate(top_3.to_dict('records'), 1): self.print_detailed_row(r, prefix=f"  🥇 {i}위")
             
-            self.generate_html_report(macro_results, top_3, excluded)
+            self.generate_html_report(macro_results, web_indices_results, gold_list, top_3, excluded)
             self.auto_git_push()
 
         input("\n[알림] 모든 작업 완료. 엔터를 누르면 종료됩니다.")
