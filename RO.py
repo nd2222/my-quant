@@ -5,6 +5,9 @@ import sys
 import requests
 import io
 import time
+import os
+import subprocess
+from datetime import datetime
 
 # 윈도우 한글 출력 보정
 sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
@@ -61,7 +64,6 @@ class UltimateGiTaeSystem:
         df['atr'] = df['tr'].ewm(span=20, adjust=False).mean()
         df['atr_ma50'] = df['atr'].rolling(50).mean()
         df['ma20'] = df['Close'].rolling(20).mean()
-        df['ma50'] = df['Close'].rolling(50).mean()
         df['ma200'] = df['Close'].rolling(200).mean()
         df['vol_ma20'] = df['Volume'].rolling(20).mean()
         p_dm, m_dm = df['High'].diff(), df['Low'].diff()
@@ -71,7 +73,6 @@ class UltimateGiTaeSystem:
         return df
 
     def calculate_super_lead_score(self, curr, df, spy_perf):
-        """[수정 완료] 함수 이름 일치 및 로직 강화"""
         score = 0
         if curr['Close'] > curr['ma200']: score += 30
         h55 = df['High'].rolling(55).max().iloc[-2]
@@ -79,127 +80,155 @@ class UltimateGiTaeSystem:
         score += min(20, (curr['adx'] / 45) * 20)
         vol_r = curr['Volume'] / curr['vol_ma20'] if curr['vol_ma20'] > 0 else 1
         score += min(20, (vol_r / 2.0) * 20)
-        
         squeeze = 1.2 if curr['atr'] < curr['atr_ma50'] else 0.9
         perf_3m = (curr['Close'] / df['Close'].iloc[-63]) - 1 if len(df) > 63 else 0
         alpha = 1.25 if perf_3m > spy_perf else 1.0
-        
         final = score * squeeze * alpha
-        if curr['Close'] > curr['ma20'] * 1.08: return 0.0 # 과열 필터
+        if curr['Close'] > curr['ma20'] * 1.08: return 0.0
         return round(final, 2)
 
     def print_detailed_row(self, s, prefix="  >"):
         unit = int(self.risk_money / (s['atr'] * 2 * self.usd_krw))
         sec_kr = SECTOR_MAP.get(s['sector'], s['sector'])
         rr_ratio = abs((s['close'] - s['exit_l']) / (s['close'] - s['stop'])) if abs(s['close'] - s['stop']) > 0 else 0
-        
         print(f"{prefix} {s['ticker']:<5} ({sec_kr}): {s['label']} 돌파 [점수 {s['score']:.1f}]")
         print(f"      (수량 {unit:>3}주 | 가격 ${s['close']:<7.2f} | 3M수익 {s['perf_3m']:.1%})")
         print(f"      (손절 ${s['stop']:.2f} | 익절 ${s['exit_l']:.2f} | 손익비 {rr_ratio:.1f} | 상관성 {s['max_corr']:.2f})")
         print("")
+
+    def generate_html_report(self, macro_data, top_3, excluded):
+        """[날짜별 기록 저장 버전] 웹 리포트 생성"""
+        today_str = datetime.now().strftime("%Y%m%d")
+        full_now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Reports 폴더 생성
+        os.makedirs("Reports", exist_ok=True)
+        filename = f"Reports/Report_{today_str}.html"
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>기태 리포트_{today_str}</title>
+            <style>
+                body {{ font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }}
+                .container {{ max-width: 1100px; margin: auto; }}
+                .card {{ background: #2d2d2d; border-radius: 12px; padding: 20px; margin-bottom: 20px; }}
+                h1, h2 {{ color: #f1c40f; border-bottom: 2px solid #3d3d3d; padding-bottom: 10px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                th, td {{ border: 1px solid #444; padding: 12px; text-align: left; }}
+                th {{ background: #3d3d3d; color: #f1c40f; }}
+                .rank-1 {{ background: rgba(241, 196, 15, 0.1); }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>📊 기태 님 슈퍼리드 퀀트 리포트 ({full_now})</h1>
+                <div class="card">
+                    <h2>[0] 시장 상태</h2>
+                    <table><tr><th>항목</th><th>현재가</th><th>변동</th><th>상태</th></tr>
+                    {"".join(f"<tr><td>{n}</td><td>{v['curr']:.2f}</td><td>{v['pct']:+.2f}%</td><td>{v['status']}</td></tr>" for n, v in macro_data.items())}
+                    </table>
+                </div>
+                <div class="card">
+                    <h2>[4] 최종 추천 TOP 3</h2>
+                    <table><tr><th>순위</th><th>티커</th><th>섹터</th><th>점수</th><th>수량</th><th>손익비</th></tr>
+                    {"".join(f"<tr class='rank-1'><td>{i}위</td><td>{r['ticker']}</td><td>{SECTOR_MAP.get(r['sector'], r['sector'])}</td><td>{r['score']}</td><td>{int(self.risk_money / (r['atr'] * 2 * self.usd_krw))}주</td><td>{abs((r['close']-r['exit_l'])/(r['close']-r['stop'])):.1f}</td></tr>" for i, r in enumerate(top_3.to_dict('records'), 1))}
+                    </table>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        # 1. index.html (최신용) 2. Reports/Report_날짜.html (보관용) 저장
+        for path in ["index.html", filename]:
+            with open(path, "w", encoding="utf-8") as f: f.write(html)
+        print(f">>> [시스템] 웹 리포트 2종 생성 완료 (index.html, {filename})")
+
+    def auto_git_push(self):
+        try:
+            print(">>> [시스템] GitHub 업로드 중...")
+            subprocess.run(["git", "add", "."], check=True)
+            subprocess.run(["git", "commit", "-m", f"Report Update: {datetime.now().strftime('%Y%m%d')}"], check=True)
+            subprocess.run(["git", "push"], check=True)
+            print(">>> [알림] 업로드 성공! https://nd2222.github.io/my-quant/")
+        except Exception as e: print(f">>> [오류] 업로드 실패: {e}")
 
     def run(self):
         sp_list, nq_list, sox_list, sp_sectors = get_indices_data()
         my_tickers = [p['ticker'] for p in MY_POSITIONS]
         all_tickers = sorted(list(set(sp_list + nq_list + sox_list + list(MACRO_ASSETS.keys()) + my_tickers)))
         
-        print(f"\n>>> 실시간 환율 적용: 1달러 = {self.usd_krw:.2f}원")
-        print(f">>> [전략 엔진] 총 {len(all_tickers)}개 자산 정밀 분석 시작...")
-        
+        print(f"\n>>> [전략 엔진] 총 {len(all_tickers)}개 자산 정밀 분석 시작...")
         data = yf.download(all_tickers, period="2y", auto_adjust=True, group_by='ticker', progress=False)
-        spy_perf = (data['^GSPC']['Close'].iloc[-1] / data['^GSPC']['Close'].iloc[-63]) - 1 if not data['^GSPC'].empty else 0
+        spy_perf = (data['^GSPC']['Close'].iloc[-1] / data['^GSPC']['Close'].iloc[-63]) - 1
         holdings_data = {t: data[t]['Close'].dropna() for t in my_tickers}
 
         # [0] 시장 요약
+        macro_results = {}
         print("\n" + "="*95 + "\n [0] 글로벌 거시 지표 및 시장 상태 요약\n" + "-"*95)
         for ticker, name in MACRO_ASSETS.items():
             if ticker in data.columns.levels[0]:
                 d = data[ticker].dropna()
-                if not d.empty:
-                    curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
-                    status = "강세 ☀️" if curr > d['Close'].rolling(200).mean().iloc[-1] else "약세 ⛈️"
-                    print(f" ● {name:<15}: {curr:>10.2f} ({ (curr/prev-1)*100 :>+5.2f}%) | {status}")
+                curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
+                status = "강세 ☀️" if curr > d['Close'].rolling(200).mean().iloc[-1] else "약세 ⛈️"
+                macro_results[name] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
+                print(f" ● {name:<15}: {curr:>10.2f} ({macro_results[name]['pct']:>+5.2f}%) | {status}")
 
         # [1] 보유 종목
         print("\n" + "="*95 + "\n [1] 현재 보유 종목 정밀 진단\n" + "-"*95)
         for pos in MY_POSITIONS:
-            t = pos['ticker']
-            df = self.calculate_indicators(data[t].dropna())
+            t, df = pos['ticker'], self.calculate_indicators(data[pos['ticker']].dropna())
             if df is not None:
                 curr = df.iloc[-1]
-                entry_atr = df.loc[df.index <= pos['entry_date']]['atr'].iloc[-1] if not df.loc[df.index <= pos['entry_date']].empty else df['atr'].iloc[-1]
-                stop_p, exit_l = pos['price'] - (2 * entry_atr), df['Low'].rolling(10).min().iloc[-1]
-                print(f" ● {t:<5} | 수익 {(curr['Close']/pos['price']-1)*100:>5.1f}% | 현재가 ${curr['Close']:.2f} | 손절가 ${stop_p:.2f} | 익절가 ${exit_l:.2f}")
+                entry_atr = df.loc[df.index <= pos['entry_date']]['atr'].iloc[-1]
+                print(f" ● {t:<5} | 수익 {(curr['Close']/pos['price']-1)*100:>5.1f}% | 현재가 ${curr['Close']:.2f}")
 
-        # [2] 지수별 분석
+        # [2] 지수별 분석 (기태님이 원하신 상세 리포트 구조)
         all_signals = []
         indices_to_scan = [("2-1. 반도체(SOX)", sox_list), ("2-2. 나스닥100", nq_list), ("2-3. S&P 500", sp_list)]
         
         for idx_name, t_list in indices_to_scan:
-            print("\n" + "="*95 + f"\n [{idx_name}] 전수 조사 결과 (총 {len(t_list)}개 분석)")
-            print("-" * 95)
+            print("\n" + "="*95 + f"\n [{idx_name}] 전수 조사 결과 (총 {len(t_list)}개 분석)\n" + "-"*95)
             curr_found = 0
             for i, t in enumerate(t_list, 1):
-                sys.stdout.write(f"\r  ▶ 분석 진행률: {i}/{len(t_list)} ({t:<5})")
+                # 실시간 로딩 현황 표시
+                sys.stdout.write(f"\r  ▶ {idx_name} 분석 진행률: {i}/{len(t_list)} ({t:<5})")
                 sys.stdout.flush()
                 
                 if t in my_tickers or t not in data.columns.levels[0]: continue
                 df = self.calculate_indicators(data[t].dropna())
                 if df is None: continue
-                
                 score = self.calculate_super_lead_score(df.iloc[-1], df, spy_perf)
                 
                 if score >= 75.0:
-                    correlations = [df['Close'].corr(h_close) for h_close in holdings_data.values()]
-                    max_corr = max(correlations) if correlations else 0.0
-                    s = {
-                        'ticker': t, 'label': 'S2' if df.iloc[-1]['Close'] > df['High'].rolling(55).max().iloc[-2] else 'S1',
-                        'close': df.iloc[-1]['Close'], 'atr': df.iloc[-1]['atr'], 'adx': df.iloc[-1]['adx'], 
-                        'exit_l': df['Low'].rolling(10).min().iloc[-1], 'score': score, 
-                        'perf_3m': (df.iloc[-1]['Close']/df['Close'].iloc[-63]-1) if len(df) > 63 else 0, 
-                        'sector': sp_sectors.get(t, "Technology" if t in sox_list else "기타"), 
-                        'max_corr': max_corr, 'stop': df.iloc[-1]['Close']-(2*df.iloc[-1]['atr']),
-                        'close_series': df['Close']
-                    }
+                    max_corr = max([df['Close'].corr(h_close) for h_close in holdings_data.values()])
+                    s = {'ticker': t, 'label': 'S2' if df.iloc[-1]['Close'] > df['High'].rolling(55).max().iloc[-2] else 'S1',
+                         'close': df.iloc[-1]['Close'], 'atr': df.iloc[-1]['atr'], 'adx': df.iloc[-1]['adx'], 
+                         'exit_l': df['Low'].rolling(10).min().iloc[-1], 'score': score, 
+                         'perf_3m': (df.iloc[-1]['Close']/df['Close'].iloc[-63]-1), 
+                         'sector': sp_sectors.get(t, "Technology" if t in sox_list else "기타"), 
+                         'max_corr': max_corr, 'stop': df.iloc[-1]['Close']-(2*df.iloc[-1]['atr'])}
                     all_signals.append(s)
-                    print(f"\n") 
+                    print("\n") # 로딩바 아래로 상세 정보 출력
                     self.print_detailed_row(s)
                     curr_found += 1
-            print(f"\n  >>> {idx_name}: 총 {curr_found}개 종목 최종 포착됨.")
+            print(f"\n  >>> {idx_name}: 총 {curr_found}개 종목 포착.")
 
-        # [3] 골든 리스트 (점수 130 이상)
-        unique_signals = {v['ticker']:v for v in all_signals}.values()
-        perfect = [s for s in unique_signals if s['score'] >= 130]
-        print("\n" + "="*95 + f"\n [3] 초엄격 '슈퍼리드' 골든 리스트 (총 {len(perfect)}개)")
-        print("-" * 95)
-        for s in sorted(perfect, key=lambda x: x['score'], reverse=True):
-            self.print_detailed_row(s, prefix="  ★")
-
-        # [4] 최종 추천 TOP 3
-        print("\n" + "="*95 + "\n [4] 최종 추천 TOP 3 (상관관계 0.5 미만 & 분산 최적화)\n" + "-"*95)
-        df_all = pd.DataFrame(unique_signals)
+        # [4] 최종 결과 및 업로드
+        print("\n" + "="*95 + "\n [4] 최종 추천 TOP 3 및 자동 업데이트\n" + "-"*95)
+        df_all = pd.DataFrame(all_signals).drop_duplicates('ticker')
         if not df_all.empty:
-            passed = df_all[df_all['max_corr'] < 0.5].sort_values(by='score', ascending=False)
-            excluded = df_all[df_all['max_corr'] >= 0.5].sort_values(by='score', ascending=False)
+            passed = df_all[df_all['max_corr'] < 0.5].sort_values('score', ascending=False)
+            excluded = df_all[df_all['max_corr'] >= 0.5].sort_values('score', ascending=False)
+            top_3 = passed.groupby('sector').head(1).sort_values('score', ascending=False).head(3)
+            for i, r in enumerate(top_3.to_dict('records'), 1): self.print_detailed_row(r, prefix=f"  🥇 {i}위")
+            
+            self.generate_html_report(macro_results, top_3, excluded)
+            self.auto_git_push()
 
-            if not passed.empty:
-                top_3 = passed.groupby('sector').head(1).sort_values(by='score', ascending=False).head(3)
-                for i, r in enumerate(top_3.to_dict('records'), 1):
-                    self.print_detailed_row(r, prefix=f"  🥇 {i}위")
-            else: print("  적합한 분산 종목이 없습니다.")
-
-            print("\n" + "="*95 + "\n [5] ★중복 위험★ 실력은 좋으나 포트폴리오와 동조화가 높은 종목\n" + "-"*95)
-            for r in excluded.head(5).to_dict('records'):
-                self.print_detailed_row(r, prefix="  ⚠️ [중복]")
-
-        # [6] 전문가 리스크 관리 제언
-        total_risk = len(MY_POSITIONS) * 1.0 
-        print("\n" + "="*95 + "\n [6] 전문가 리스크 관리 제언\n" + "-"*95)
-        print(f" ● 현재 포트폴리오 리스크 총량(Portfolio Heat): {total_risk:.1f}% (안전 범위)")
-        print(f" ● 실시간 환율({self.usd_krw:.1f}원) 기반으로 계산된 추천 수량입니다. 환율 변동에 주의하세요.")
-        print(f" ● 모든 추천 종목은 손절가를 반드시 시스템에 미리 입력해두어 '비자발적 장기투자'를 방지하십시오.")
-        
-        input("\n[알림] 기태님, 모든 분석이 완료되었습니다. 엔터를 누르면 종료됩니다.")
+        input("\n[알림] 모든 작업 완료. 엔터를 누르면 종료됩니다.")
 
 if __name__ == "__main__":
     UltimateGiTaeSystem(CAPITAL_KRW).run()
