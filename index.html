@@ -1,0 +1,51 @@
+
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>기태의 퀀트 리포트</title>
+            <style>
+                body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
+                .container { max-width: 1000px; margin: auto; }
+                .card { background: #2d2d2d; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+                h1, h2 { color: #f1c40f; border-bottom: 2px solid #3d3d3d; padding-bottom: 10px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #444; padding: 12px; text-align: left; }
+                th { background: #3d3d3d; color: #f1c40f; }
+                .rank-1 { background: rgba(241, 196, 15, 0.15); }
+                .positive { color: #ff4757; } .negative { color: #2e86de; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>📊 기태 님 슈퍼리드 퀀트 리포트</h1>
+                <p>업데이트: 2026-01-12 20:35 | 환율: 1466.97원</p>
+                
+                <div class="card">
+                    <h2>[0] 글로벌 시장 요약</h2>
+                    <table>
+                        <tr><th>항목</th><th>현재가</th><th>변동률</th><th>상태</th></tr>
+                        <tr><td>S&P 500</td><td>6966.28</td><td class='positive'>+0.65%</td><td>강세 ☀️</td></tr><tr><td>나스닥 종합</td><td>23671.35</td><td class='positive'>+0.81%</td><td>강세 ☀️</td></tr><tr><td>필라델피아 반도체</td><td>7638.78</td><td class='positive'>+2.73%</td><td>강세 ☀️</td></tr><tr><td>금(Gold)</td><td>414.47</td><td class='positive'>+0.72%</td><td>강세 ☀️</td></tr><tr><td>은(Silver)</td><td>72.38</td><td class='positive'>+3.83%</td><td>강세 ☀️</td></tr><tr><td>원유(Crude)</td><td>70.78</td><td class='positive'>+0.34%</td><td>약세 ⛈️</td></tr><tr><td>달러인덱스</td><td>27.33</td><td class='positive'>+0.22%</td><td>강세 ☀️</td></tr><tr><td>미 10년 금리</td><td>4.17</td><td class='negative'>-0.29%</td><td>약세 ⛈️</td></tr>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h2>[4] 최종 추천 TOP 3</h2>
+                    <table>
+                        <tr><th>순위</th><th>티커</th><th>섹터</th><th>점수</th><th>추천수량</th><th>손익비</th></tr>
+                        <tr class='rank-1'><td>1위</td><td>UPS</td><td>산업재</td><td>134.71</td><td>53주</td><td>2.2</td></tr><tr class='rank-1'><td>2위</td><td>HST</td><td>부동산</td><td>132.35</td><td>292주</td><td>1.0</td></tr><tr class='rank-1'><td>3위</td><td>ALGN</td><td>헬스케어</td><td>131.14</td><td>27주</td><td>2.1</td></tr>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h2>[5] 중복 위험 종목 (High Correlation)</h2>
+                    <table>
+                        <tr><th>티커</th><th>섹터</th><th>점수</th><th>상관계수</th></tr>
+                        <tr><td>CHRW</td><td>산업재</td><td>140.22</td><td>0.92</td></tr><tr><td>HLT</td><td>임의소비재</td><td>137.77</td><td>0.74</td></tr><tr><td>IVZ</td><td>금융</td><td>137.63</td><td>0.92</td></tr><tr><td>WAB</td><td>산업재</td><td>136.09</td><td>0.64</td></tr><tr><td>MAR</td><td>임의소비재</td><td>134.63</td><td>0.69</td></tr>
+                    </table>
+                </div>
+            </div>
+        </body>
+        </html>
+        
