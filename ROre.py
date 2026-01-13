@@ -7,15 +7,18 @@ import io
 import time
 import os
 import subprocess
+import matplotlib.pyplot as plt
 from datetime import datetime
 
-# 윈도우 한글 출력 보정
+# 한글 및 시각화 설정 (창 꺼짐 방지)
 sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
+plt.rcParams['axes.unicode_minus'] = False 
 
-# ================= [기태님의 3,400만원 철통 자산 관리 설정] =================
-CAPITAL_KRW = 23000000   
-RISK_RATIO = 0.01        
+# ================= [기태님의 자산 관리 설정] =================
+CAPITAL_KRW = 23000000   # IEX 매수 후 잔고 반영
+RISK_RATIO = 0.01        # 계좌당 리스크 1%
 
+# [보유 종목] 매수 후 여기에 추가하면 자동으로 분석에서 제외 및 추적 시작
 MY_POSITIONS = [
     {'ticker': 'GOOGL', 'price': 201.935, 'qty': 69, 'entry_date': '2025-08-13'},
     {'ticker': 'IEX', 'price': 186.77, 'qty': 35, 'entry_date': '2026-01-13'}
@@ -37,9 +40,7 @@ SECTOR_MAP = {
 }
 
 def get_realtime_rate():
-    try:
-        rate = yf.Ticker("KRW=X").history(period="1d")['Close'].iloc[-1]
-        return rate
+    try: return yf.Ticker("KRW=X").history(period="1d")['Close'].iloc[-1]
     except: return 1468.0
 
 def get_indices_data():
@@ -59,174 +60,141 @@ class UltimateGiTaeSystem:
         self.risk_money = capital * RISK_RATIO
 
     def calculate_indicators(self, df):
-        if df is None or len(df) < 200: return None
+        if df is None or len(df) < 20: return None
         df = df.copy()
         df['tr'] = pd.concat([df['High']-df['Low'], abs(df['High']-df['Close'].shift()), abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
         df['atr'] = df['tr'].ewm(span=20, adjust=False).mean()
-        df['atr_ma50'] = df['atr'].rolling(50).mean()
-        df['ma20'] = df['Close'].rolling(20).mean()
         df['ma200'] = df['Close'].rolling(200).mean()
-        df['vol_ma20'] = df['Volume'].rolling(20).mean()
+        df['exit_l'] = df['Low'].rolling(10).min() # 익절가: 10일 저점
         p_dm, m_dm = df['High'].diff(), df['Low'].diff()
         tr_s = df['tr'].ewm(span=14, adjust=False).mean()
         df['adx'] = (100 * (p_dm.ewm(span=14).mean()/tr_s - abs(m_dm).ewm(span=14).mean()/tr_s).abs() / 
                      (p_dm.ewm(span=14).mean()/tr_s + abs(m_dm).ewm(span=14).mean()/tr_s)).ewm(span=14).mean()
         return df
 
-    def calculate_super_lead_score(self, curr, df, spy_perf):
-        score = 0
-        if curr['Close'] > curr['ma200']: score += 30
-        h55 = df['High'].rolling(55).max().iloc[-2]
-        if curr['Close'] > h55: score += 30
-        score += min(20, (curr['adx'] / 45) * 20)
-        vol_r = curr['Volume'] / curr['vol_ma20'] if curr['vol_ma20'] > 0 else 1
-        score += min(20, (vol_r / 2.0) * 20)
-        squeeze = 1.2 if curr['atr'] < curr['atr_ma50'] else 0.9
-        perf_3m = (curr['Close'] / df['Close'].iloc[-63]) - 1 if len(df) > 63 else 0
-        alpha = 1.25 if perf_3m > spy_perf else 1.0
-        final = score * squeeze * alpha
-        if curr['Close'] > curr['ma20'] * 1.08: return 0.0
-        return round(final, 2)
+    def save_position_chart(self, ticker, df, buy_price):
+        """보유 종목 전용 추적 차트 생성"""
+        os.makedirs("Charts", exist_ok=True)
+        plt.figure(figsize=(12, 6))
+        plot_data = df.tail(60)
+        
+        plt.plot(plot_data.index, plot_data['Close'], label='현재가', color='white', linewidth=2)
+        plt.axhline(y=buy_price, color='gold', linestyle='--', label=f'매수가 (${buy_price})')
+        plt.plot(plot_data.index, plot_data['Close'] - (2 * plot_data['atr']), color='red', alpha=0.5, label='손절선 (ATR)')
+        plt.step(plot_data.index, plot_data['exit_l'], color='cyan', where='post', label='익절선 (10D Low)')
+        
+        plt.title(f"{ticker} 포지션 관리 차트", color='white', fontsize=14)
+        plt.legend(loc='upper left')
+        plt.grid(True, alpha=0.1)
+        plt.gca().set_facecolor('#1e1e1e')
+        plt.gcf().set_facecolor('#121212')
+        plt.tick_params(colors='white')
+        plt.savefig(f"Charts/{ticker}_tracking.png")
+        plt.close()
 
-    def print_detailed_row(self, s, prefix="  >"):
-        unit = int(self.risk_money / (s['atr'] * 2 * self.usd_krw))
-        sec_kr = SECTOR_MAP.get(s['sector'], s['sector'])
-        rr_ratio = abs((s['close'] - s['exit_l']) / (s['close'] - s['stop'])) if abs(s['close'] - s['stop']) > 0 else 0
-        print(f"{prefix} {s['ticker']:<5} ({sec_kr}): {s['label']} 돌파 [점수 {s['score']:.1f}]")
-        print(f"      (수량 {unit:>3}주 | 가격 ${s['close']:<7.2f} | 3M수익 {s['perf_3m']:.1%})")
-        print(f"      (손절 ${s['stop']:.2f} | 익절 ${s['exit_l']:.2f} | 손익비 {rr_ratio:.1f} | 상관성 {s['max_corr']:.2f})")
-        print("")
-
-    def generate_html_report(self, macro_data, indices_results, gold_list, top_3, excluded):
-        """[방대한 데이터 통합] 웹 리포트 생성"""
+    def generate_html_report(self, top_3, excluded, my_status):
         today_str = datetime.now().strftime("%Y%m%d")
-        full_now = datetime.now().strftime("%Y-%m-%d %H:%M")
         os.makedirs("Reports", exist_ok=True)
-        filename = f"Reports/Report_{today_str}.html"
-
-        def make_table(data_list, highlight=False):
-            if not data_list: return "<p>포착된 종목 없음</p>"
+        
+        def make_table(data_list, is_pos=False):
+            if not data_list: return "<p>해당 없음</p>"
             rows = ""
-            for r in data_list:
-                rr = abs((r['close']-r['exit_l'])/(r['close']-r['stop'])) if abs(r['close']-r['stop'])>0 else 0
-                unit = int(self.risk_money / (r['atr'] * 2 * self.usd_krw))
-                rows += f"<tr class='{'rank-1' if highlight else ''}'><td>{r['ticker']}</td><td>{SECTOR_MAP.get(r['sector'], r['sector'])}</td><td>{r['score']}</td><td>${r['close']:.2f}</td><td>{unit}주</td><td>{rr:.1f}</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>"
-            return f"<table><tr><th>티커</th><th>섹터</th><th>점수</th><th>현재가</th><th>수량</th><th>손익비</th><th>상관성</th><th>3M수익</th></tr>{rows}</table>"
+            if is_pos:
+                for r in data_list:
+                    color = "#ff4757" if r['profit'] < 0 else "#2ecc71"
+                    rows += f"<tr><td><b>{r['ticker']}</b></td><td>${r['buy']:.2f}</td><td>${r['curr']:.2f}</td><td style='color:{color}'>{r['profit']:+.2f}%</td><td>${r['stop']:.2f}</td><td>${r['exit']:.2f}</td><td>{r['status']}</td></tr>"
+                cols = "<th>티커</th><th>매수가</th><th>현재가</th><th>수익률</th><th>손절가</th><th>익절가(10D)</th><th>상태</th>"
+            else:
+                for r in data_list:
+                    unit = int(self.risk_money / (r['atr'] * 2 * self.usd_krw))
+                    rows += f"<tr><td>{r['ticker']}</td><td>{r['score']}</td><td>${r['close']:.2f}</td><td>{unit}주</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>"
+                cols = "<th>티커</th><th>점수</th><th>현재가</th><th>수량</th><th>상관성</th><th>3M수익</th>"
+            return f"<table><tr>{cols}</tr>{rows}</table>"
 
         html = f"""
-        <!DOCTYPE html>
-        <html lang="ko">
-        <head>
-            <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>기태 퀀트 리포트_{today_str}</title>
-            <style>
-                body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }}
-                .container {{ max-width: 1200px; margin: auto; }}
-                .card {{ background: #1e1e1e; border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #333; }}
-                h1 {{ color: #f1c40f; text-align: center; margin-bottom: 30px; }}
-                h2 {{ color: #f1c40f; border-left: 5px solid #f1c40f; padding-left: 15px; margin-bottom: 15px; font-size: 1.4em; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }}
-                th, td {{ border: 1px solid #333; padding: 12px; text-align: left; }}
-                th {{ background: #2c2c2c; color: #f1c40f; }}
-                .rank-1 {{ background: rgba(241, 196, 15, 0.1); }}
-                .bull {{ color: #ff4757; }} .bear {{ color: #2e86de; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>📊 기태 님 슈퍼리드 전수조사 리포트 ({full_now})</h1>
-                <div class="card">
-                    <h2>[0] 글로벌 시장 요약</h2>
-                    <table><tr><th>항목</th><th>현재가</th><th>변동</th><th>상태</th></tr>
-                    {"".join(f"<tr><td>{n}</td><td>{v['curr']:.2f}</td><td class='{'bull' if v['pct']>0 else 'bear'}'>{v['pct']:+.2f}%</td><td>{v['status']}</td></tr>" for n, v in macro_data.items())}
-                    </table>
-                </div>
-                <div class="card"><h2>[1] 최종 추천 TOP 3 (안전 분산)</h2>{make_table(top_3.to_dict('records'), True)}</div>
-                <div class="card"><h2>[2] 초엄격 '슈퍼리드' 골든 리스트</h2>{make_table(gold_list)}</div>
-                <div class="card"><h2>[3-1] 반도체(SOX) 전수조사</h2>{make_table(indices_results['2-1. 반도체(SOX)'])}</div>
-                <div class="card"><h2>[3-2] 나스닥100 전수조사</h2>{make_table(indices_results['2-2. 나스닥100'])}</div>
-                <div class="card"><h2>[3-3] S&P 500 전수조사</h2>{make_table(indices_results['2-3. S&P 500'])}</div>
-                <div class="card"><h2>[4] 중복 위험 종목 (High Correlation)</h2>{make_table(excluded.head(10).to_dict('records'))}</div>
-            </div>
-        </body>
-        </html>
+        <!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+        <style>
+        body{{background:#121212;color:#eee;font-family:sans-serif;padding:20px;line-height:1.6;}}
+        .card{{background:#1e1e1e;border-radius:12px;padding:25px;margin-bottom:30px;border:1px solid #333;box-shadow: 0 4px 15px rgba(0,0,0,0.5);}}
+        h1,h2{{color:gold; border-bottom: 1px solid #444; padding-bottom:10px;}} 
+        table{{width:100%;border-collapse:collapse;margin-top:15px;}} th,td{{border:1px solid #444;padding:12px;text-align:left;}} th{{background:#333; color:gold;}}
+        .chart-img{{width:48%; margin:1%; border-radius:10px; border:2px solid #444; transition: transform 0.3s;}}
+        .chart-img:hover {{transform: scale(1.02);}}
+        </style></head><body>
+        <h1>📊 기태님 개인 자산 관리 대시보드 ({datetime.now().strftime("%Y-%m-%d %H:%M")})</h1>
+        <div class="card"><h2>✅ [계좌 현황] 내 보유 종목</h2>{make_table(my_status, is_pos=True)}</div>
+        <div class="card"><h2>📈 [관리 차트] 수익 추적 및 익절 타이밍</h2>
+            {''.join([f'<div style="display:inline-block; width:100%; text-align:center;"><img src="../Charts/{p["ticker"]}_tracking.png" class="chart-img" style="width:90%;"></div>' for p in MY_POSITIONS])}
+        </div>
+        <div class="card"><h2>🥇 [신규 추천] 오늘의 TOP 3</h2>{make_table(top_3.to_dict('records'))}</div>
+        <div class="card"><h2>⚠️ [분석 제외] 기존 보유 및 상관성 높은 종목</h2>{make_table(excluded.head(5).to_dict('records'))}</div>
+        </body></html>
         """
-        for path in ["index.html", filename]:
+        for path in [f"Reports/Report_{today_str}.html", "index.html"]:
             with open(path, "w", encoding="utf-8") as f: f.write(html)
-        print(f">>> [시스템] 날짜별 웹 리포트 생성 완료 ({filename})")
-
-    def auto_git_push(self):
-        try:
-            print(">>> [시스템] GitHub 업로드 중 (파일이 많아 시간이 소요될 수 있습니다)...")
-            subprocess.run(["git", "add", "."], check=True)
-            subprocess.run(["git", "commit", "-m", f"Full Report Update: {datetime.now().strftime('%Y%m%d')}"], check=True)
-            subprocess.run(["git", "push"], check=True)
-            print(">>> [알림] 업로드 성공! https://nd2222.github.io/my-quant/")
-        except Exception as e: print(f">>> [오류] 업로드 실패: {e}")
 
     def run(self):
         sp_list, nq_list, sox_list, sp_sectors = get_indices_data()
-        my_tickers = [p['ticker'] for p in MY_POSITIONS]
+        my_tickers = [p['ticker'].strip().upper() for p in MY_POSITIONS]
         all_tickers = sorted(list(set(sp_list + nq_list + sox_list + list(MACRO_ASSETS.keys()) + my_tickers)))
         
-        print(f"\n>>> [전략 엔진] 총 {len(all_tickers)}개 자산 정밀 분석 시작...")
+        print(f"\n>>> [시스템 가동] {len(all_tickers)}개 자산 분석 및 추적 차트 생성 중...")
         data = yf.download(all_tickers, period="2y", auto_adjust=True, group_by='ticker', progress=False)
         spy_perf = (data['^GSPC']['Close'].iloc[-1] / data['^GSPC']['Close'].iloc[-63]) - 1
-        holdings_data = {t: data[t]['Close'].dropna() for t in my_tickers}
-
-        macro_results = {}
-        print("\n" + "="*95 + "\n [0] 글로벌 거시 지표 요약\n" + "-"*95)
-        for ticker, name in MACRO_ASSETS.items():
-            if ticker in data.columns.levels[0]:
-                d = data[ticker].dropna()
-                curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
-                status = "강세 ☀️" if curr > d['Close'].rolling(200).mean().iloc[-1] else "약세 ⛈️"
-                macro_results[name] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
-                print(f" ● {name:<15}: {curr:>10.2f} ({macro_results[name]['pct']:>+5.2f}%) | {status}")
-
-        all_signals = []
-        indices_to_scan = [("2-1. 반도체(SOX)", sox_list), ("2-2. 나스닥100", nq_list), ("2-3. S&P 500", sp_list)]
-        web_indices_results = {name: [] for name, _ in indices_to_scan}
         
-        for idx_name, t_list in indices_to_scan:
-            print("\n" + "="*95 + f"\n [{idx_name}] 전수 조사 결과\n" + "-"*95)
-            for i, t in enumerate(t_list, 1):
-                sys.stdout.write(f"\r  ▶ {idx_name} 분석 진행률: {i}/{len(t_list)} ({t:<5})")
-                sys.stdout.flush()
-                
-                if t in my_tickers or t not in data.columns.levels[0]: continue
-                df = self.calculate_indicators(data[t].dropna())
-                if df is None: continue
-                score = self.calculate_super_lead_score(df.iloc[-1], df, spy_perf)
-                
-                if score >= 75.0:
-                    max_corr = max([df['Close'].corr(h_close) for h_close in holdings_data.values()])
-                    s = {'ticker': t, 'label': 'S2' if df.iloc[-1]['Close'] > df['High'].rolling(55).max().iloc[-2] else 'S1',
-                         'close': df.iloc[-1]['Close'], 'atr': df.iloc[-1]['atr'], 'adx': df.iloc[-1]['adx'], 
-                         'exit_l': df['Low'].rolling(10).min().iloc[-1], 'score': score, 
-                         'perf_3m': (df.iloc[-1]['Close']/df['Close'].iloc[-63]-1), 
-                         'sector': sp_sectors.get(t, "Technology" if t in sox_list else "기타"), 
-                         'max_corr': max_corr, 'stop': df.iloc[-1]['Close']-(2*df.iloc[-1]['atr'])}
-                    all_signals.append(s)
-                    web_indices_results[idx_name].append(s)
-                    print("\n")
-                    self.print_detailed_row(s)
-            print(f"\n  >>> {idx_name}: 총 {len(web_indices_results[idx_name])}개 포착.")
+        # 1. 내 종목 상태 분석 및 차트 저장
+        my_status = []
+        holdings_data = {}
+        for p in MY_POSITIONS:
+            t = p['ticker']
+            df = self.calculate_indicators(data[t].dropna())
+            holdings_data[t] = df['Close']
+            curr = df['Close'].iloc[-1]
+            stop = curr - (2 * df['atr'].iloc[-1])
+            exit_l = df['exit_l'].iloc[-1]
+            status = "보유(Keep)" if curr > stop and curr > exit_l else "⚠️ 매도검토"
+            my_status.append({'ticker':t, 'buy':p['price'], 'curr':curr, 'profit':(curr/p['price']-1)*100, 'stop':stop, 'exit':exit_l, 'status':status})
+            self.save_position_chart(t, df, p['price'])
 
+        # 2. 신규 종목 스캔 (보유 중인 종목은 철저히 필터링)
+        all_signals = []
+        for t in all_tickers:
+            if t in my_tickers or t in MACRO_ASSETS: continue
+            df = self.calculate_indicators(data[t].dropna())
+            if df is None: continue
+            
+            # 슈퍼리드 스코어 계산
+            score = 0
+            curr = df.iloc[-1]
+            if curr['Close'] > curr['ma200']: score += 60
+            if curr['adx'] > 25: score += 40
+            
+            if score >= 75.0:
+                max_corr = max([df['Close'].corr(h_close) for h_close in holdings_data.values()])
+                all_signals.append({'ticker': t, 'close': curr['Close'], 'atr': curr['atr'], 
+                                   'score': score, 'max_corr': max_corr, 'perf_3m': (curr['Close']/df['Close'].iloc[-63]-1),
+                                   'sector': sp_sectors.get(t, "기타")})
+
+        # 3. 데이터 통합 및 파일 출력
         df_all = pd.DataFrame(all_signals).drop_duplicates('ticker')
         if not df_all.empty:
-            gold_list = df_all[df_all['score'] >= 130].sort_values('score', ascending=False).to_dict('records')
             passed = df_all[df_all['max_corr'] < 0.5].sort_values('score', ascending=False)
-            excluded = df_all[df_all['max_corr'] >= 0.5].sort_values('score', ascending=False)
             top_3 = passed.groupby('sector').head(1).sort_values('score', ascending=False).head(3)
+            excluded = df_all[df_all['max_corr'] >= 0.5].sort_values('score', ascending=False)
+            self.generate_html_report(top_3, excluded, my_status)
             
-            print("\n" + "="*95 + "\n [4] 최종 추천 및 자동 업데이트\n" + "-"*95)
-            for i, r in enumerate(top_3.to_dict('records'), 1): self.print_detailed_row(r, prefix=f"  🥇 {i}위")
-            
-            self.generate_html_report(macro_results, web_indices_results, gold_list, top_3, excluded)
-            self.auto_git_push()
+            if not top_3.empty:
+                with open("target.txt", "w", encoding="utf-8") as f:
+                    best = top_3.iloc[0]
+                    f.write(f"{best['ticker']},{int(self.risk_money / (best['atr'] * 2 * self.usd_krw))}")
 
-  
+        # 4. GitHub 자동 동기화
+        try:
+            subprocess.run(["git", "add", "."], check=True)
+            subprocess.run(["git", "commit", "-m", f"Report Update: {datetime.now().strftime('%Y%m%d')}"], check=True)
+            subprocess.run(["git", "push"], check=True)
+            print(">>> [알림] 깃허브 업로드 및 리포트 갱신 완료.")
+        except: pass
 
 if __name__ == "__main__":
     UltimateGiTaeSystem(CAPITAL_KRW).run()
