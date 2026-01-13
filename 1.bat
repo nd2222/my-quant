@@ -34,7 +34,7 @@ echo.
 echo ==========================
 echo 3. Order.py 실행 중...
 echo ==========================
-python Order.py
+python order.py
 if %errorlevel% neq 0 (
     echo.
     echo [오류 발생] Order.py 실행 실패. 위 내용을 확인하세요.

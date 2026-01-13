@@ -225,7 +225,7 @@ class UltimateGiTaeSystem:
             self.generate_html_report(macro_results, web_indices_results, gold_list, top_3, excluded)
             self.auto_git_push()
 
-        input("\n[알림] 모든 작업 완료. 엔터를 누르면 종료됩니다.")
+  
 
 if __name__ == "__main__":
     UltimateGiTaeSystem(CAPITAL_KRW).run()
