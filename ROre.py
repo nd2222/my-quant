@@ -13,11 +13,12 @@ from datetime import datetime
 sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
 
 # ================= [기태님의 3,400만원 철통 자산 관리 설정] =================
-CAPITAL_KRW = 34000000   
+CAPITAL_KRW = 23000000   
 RISK_RATIO = 0.01        
 
 MY_POSITIONS = [
-    {'ticker': 'GOOGL', 'price': 201.935, 'qty': 69, 'entry_date': '2025-08-13'}
+    {'ticker': 'GOOGL', 'price': 201.935, 'qty': 69, 'entry_date': '2025-08-13'},
+    {'ticker': 'IEX', 'price': 186.77, 'qty': 35, 'entry_date': '2026-01-13'}
 ]
 
 MACRO_ASSETS = {
