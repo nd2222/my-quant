@@ -1,19 +1,12 @@
 @echo off
-:: 1. 한글 인코딩 설정 (오류 시 이 줄을 삭제하고 테스트해보세요)
-chcp 65001 >nul
-:: 2. 작업 디렉토리 강제 이동
 cd /d C:\Quant
 
-echo ==========================================
-echo >>> ROre.py 단독 실행 테스트 시작
-echo ==========================================
-
-:: 3. 파이썬 실행 (전체 경로 사용이 가장 확실합니다)
-"C:\Users\A\AppData\Local\Programs\Python\Python314\python.exe" ROre.py
+echo Starting ROre.py...
+python ROre.py
 
 echo.
-echo ------------------------------------------
-echo >>> 실행 종료 (에러 코드: %errorlevel%)
-echo >>> 창을 닫으려면 아무 키나 누르세요.
+echo ==========================================
+echo Process Finished.
+echo Press any key to close.
 echo ==========================================
 pause
