@@ -1,21 +1,19 @@
 @echo off
+:: 1. 한글 인코딩 설정 (오류 시 이 줄을 삭제하고 테스트해보세요)
+chcp 65001 >nul
+:: 2. 작업 디렉토리 강제 이동
 cd /d C:\Quant
 
-echo ==========================
-echo 1. ROre.py 실행 중...
-echo ==========================
-python ROre.py
-if %errorlevel% neq 0 (
-    echo.
-    echo [오류 발생] ROre.py 실행 실패. 위 내용을 확인하세요.
-    pause
-    exit
-)
-if %errorlevel% neq 0 (
-    echo.
-    echo [오류 발생] Order.py 실행 실패. 위 내용을 확인하세요.
-    pause
-    exit
-)
+echo ==========================================
+echo >>> ROre.py 단독 실행 테스트 시작
+echo ==========================================
+
+:: 3. 파이썬 실행 (전체 경로 사용이 가장 확실합니다)
+"C:\Users\A\AppData\Local\Programs\Python\Python314\python.exe" ROre.py
 
 echo.
+echo ------------------------------------------
+echo >>> 실행 종료 (에러 코드: %errorlevel%)
+echo >>> 창을 닫으려면 아무 키나 누르세요.
+echo ==========================================
+pause
