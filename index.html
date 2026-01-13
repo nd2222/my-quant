@@ -1,19 +1,30 @@
 
         <!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
         <style>
-        body{background:#121212;color:#eee;font-family:sans-serif;padding:20px;line-height:1.6;}
-        .card{background:#1e1e1e;border-radius:12px;padding:25px;margin-bottom:30px;border:1px solid #333;box-shadow: 0 4px 15px rgba(0,0,0,0.5);}
-        h1,h2{color:gold; border-bottom: 1px solid #444; padding-bottom:10px;} 
-        table{width:100%;border-collapse:collapse;margin-top:15px;} th,td{border:1px solid #444;padding:12px;text-align:left;} th{background:#333; color:gold;}
-        .chart-img{width:48%; margin:1%; border-radius:10px; border:2px solid #444; transition: transform 0.3s;}
-        .chart-img:hover {transform: scale(1.02);}
-        </style></head><body>
-        <h1>📊 기태님 개인 자산 관리 대시보드 (2026-01-14 00:26)</h1>
-        <div class="card"><h2>✅ [계좌 현황] 내 보유 종목</h2><table><tr><th>티커</th><th>매수가</th><th>현재가</th><th>수익률</th><th>손절가</th><th>익절가(10D)</th><th>상태</th></tr><tr><td><b>GOOGL</b></td><td>$201.94</td><td>$335.63</td><td style='color:#2ecc71'>+66.21%</td><td>$320.52</td><td>$310.33</td><td>보유(Keep)</td></tr><tr><td><b>IEX</b></td><td>$186.77</td><td>$186.75</td><td style='color:#ff4757'>-0.01%</td><td>$180.11</td><td>$177.29</td><td>보유(Keep)</td></tr></table></div>
-        <div class="card"><h2>📈 [관리 차트] 수익 추적 및 익절 타이밍</h2>
-            <div style="display:inline-block; width:100%; text-align:center;"><img src="../Charts/GOOGL_tracking.png" class="chart-img" style="width:90%;"></div><div style="display:inline-block; width:100%; text-align:center;"><img src="../Charts/IEX_tracking.png" class="chart-img" style="width:90%;"></div>
+        body{background:#121212;color:#e0e0e0;font-family:'Malgun Gothic', sans-serif;padding:20px;line-height:1.6;}
+        .container{max-width:1200px;margin:auto;}
+        .card{background:#1e1e1e;border-radius:12px;padding:25px;margin-bottom:30px;border:1px solid #333;box-shadow:0 4px 15px rgba(0,0,0,0.5);}
+        h1,h2{color:#f1c40f;border-bottom:2px solid #333;padding-bottom:10px;} 
+        table{width:100%;border-collapse:collapse;margin-top:15px;font-size:15px;} 
+        th{background:#2c3e50;color:#f1c40f;padding:12px;text-align:left;border:1px solid #444;}
+        td{border:1px solid #444;padding:12px;}
+        .chart-container{display:flex;flex-wrap:wrap;justify-content:space-between;}
+        .chart-box{width:49%;margin-bottom:20px;text-align:center;}
+        .chart-img{width:100%;border-radius:8px;border:2px solid #444;transition:transform 0.2s;}
+        .chart-img:hover{transform:scale(1.02);border-color:#f1c40f;}
+        </style></head><body><div class="container">
+        <h1>📊 기태님 자산 관리 대시보드 (2026-01-14 00:31)</h1>
+        
+        <div class="card"><h2>✅ [MY] 보유 종목 현황</h2><table><tr><th>종목</th><th>매수가</th><th>현재가</th><th>수익률</th><th>손절가(Risk)</th><th>익절가(Trail)</th><th>상태</th></tr><tr><td><b>GOOGL</b></td><td>$201.94</td><td>$335.48</td><td style='color:#2ecc71; font-weight:bold;'>+66.13%</td><td>$320.37</td><td>$310.33</td><td>보유(Keep)</td></tr><tr><td><b>IEX</b></td><td>$186.77</td><td>$186.79</td><td style='color:#2ecc71; font-weight:bold;'>+0.01%</td><td>$180.15</td><td>$177.29</td><td>보유(Keep)</td></tr></table></div>
+        
+        <div class="card"><h2>📈 [MY] 수익 관리 차트 (익절선 추적)</h2>
+            <div class="chart-container">
+            <div class="chart-box"><img src="../Charts/GOOGL_tracking.png" class="chart-img"></div><div class="chart-box"><img src="../Charts/IEX_tracking.png" class="chart-img"></div>
+            </div>
         </div>
-        <div class="card"><h2>🥇 [신규 추천] 오늘의 TOP 3</h2><table><tr><th>티커</th><th>점수</th><th>현재가</th><th>수량</th><th>상관성</th><th>3M수익</th></tr><tr><td>A</td><td>100</td><td>$146.93</td><td>23주</td><td>0.46</td><td>6.6%</td></tr><tr><td>ACGL</td><td>100</td><td>$92.71</td><td>50주</td><td>0.03</td><td>0.5%</td></tr><tr><td>ADM</td><td>100</td><td>$62.79</td><td>51주</td><td>0.45</td><td>2.4%</td></tr></table></div>
-        <div class="card"><h2>⚠️ [분석 제외] 기존 보유 및 상관성 높은 종목</h2><table><tr><th>티커</th><th>점수</th><th>현재가</th><th>수량</th><th>상관성</th><th>3M수익</th></tr><tr><td>AAPL</td><td>100</td><td>$260.15</td><td>18주</td><td>0.81</td><td>5.1%</td></tr><tr><td>ABBV</td><td>100</td><td>$218.37</td><td>14주</td><td>0.77</td><td>-4.0%</td></tr><tr><td>ABNB</td><td>100</td><td>$137.00</td><td>26주</td><td>0.69</td><td>11.5%</td></tr><tr><td>ACN</td><td>100</td><td>$273.54</td><td>10주</td><td>0.76</td><td>12.0%</td></tr><tr><td>ADI</td><td>100</td><td>$297.93</td><td>11주</td><td>0.81</td><td>27.0%</td></tr></table></div>
-        </body></html>
+        
+        <div class="card"><h2>🥇 오늘의 추천 TOP 3 (기보유 제외)</h2><table><tr><th>종목</th><th>전략점수</th><th>현재가</th><th>추천수량</th><th>상관성</th><th>3개월수익</th></tr><tr><td><b>DLTR</b></td><td>121.22</td><td>$137.61</td><td>20주</td><td>0.13</td><td>44.0%</td></tr><tr><td><b>SNPS</b></td><td>79.26</td><td>$517.40</td><td>5주</td><td>0.44</td><td>16.6%</td></tr><tr><td><b>CPAY</b></td><td>78.07</td><td>$329.51</td><td>10주</td><td>0.12</td><td>13.7%</td></tr></table></div>
+        
+        <div class="card"><h2>⚠️ 분석 제외 (보유중/고상관성)</h2><table><tr><th>종목</th><th>전략점수</th><th>현재가</th><th>추천수량</th><th>상관성</th><th>3개월수익</th></tr><tr><td><b>GOOG</b></td><td>126.58</td><td>$336.04</td><td>10주</td><td>1.00</td><td>36.6%</td></tr><tr><td><b>PH</b></td><td>121.79</td><td>$936.14</td><td>4주</td><td>0.86</td><td>27.4%</td></tr><tr><td><b>ROST</b></td><td>120.95</td><td>$192.96</td><td>27주</td><td>0.80</td><td>24.6%</td></tr><tr><td><b>XOM</b></td><td>92.25</td><td>$126.05</td><td>30주</td><td>0.57</td><td>13.2%</td></tr><tr><td><b>EMR</b></td><td>80.62</td><td>$146.27</td><td>25주</td><td>0.70</td><td>13.2%</td></tr><tr><td><b>GS</b></td><td>80.46</td><td>$938.67</td><td>3주</td><td>0.88</td><td>22.4%</td></tr><tr><td><b>APP</b></td><td>79.01</td><td>$664.29</td><td>2주</td><td>0.85</td><td>12.6%</td></tr><tr><td><b>UAL</b></td><td>78.71</td><td>$116.10</td><td>24주</td><td>0.70</td><td>12.6%</td></tr><tr><td><b>FSLR</b></td><td>78.64</td><td>$238.51</td><td>6주</td><td>0.61</td><td>6.3%</td></tr><tr><td><b>AMZN</b></td><td>78.6</td><td>$243.79</td><td>15주</td><td>0.74</td><td>12.7%</td></tr></table></div>
+        </div></body></html>
         
