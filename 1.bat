@@ -2,7 +2,7 @@
 
 cd /d C:\Quant
 
-python RO.py
+python ROre.py
 
 if %errorlevel% neq 0 (
 
