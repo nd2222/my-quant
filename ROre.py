@@ -54,7 +54,6 @@ class ExpertQuantSystem:
         self.risk_money = capital * RISK_RATIO
         self.market_regime = "neutral"
         
-        # 구버전 파일 충돌 방지
         if os.path.exists(FIN_FILE):
             try:
                 with open(FIN_FILE, 'r') as f:
@@ -67,12 +66,10 @@ class ExpertQuantSystem:
             
         self.financials = self.load_financials()
         
-        # 섹터 위험 프로필 (시장 상황별 가중치용)
         self.sector_risk_profile = {
             '필수소비재': 'defensive', '헬스케어': 'defensive', '유틸리티': 'defensive',
-            '통신': 'defensive',
-            '에너지': 'cyclical', '소재': 'cyclical', '산업재': 'cyclical', 
-            '금융': 'cyclical', '임의소비재': 'cyclical',
+            '통신': 'defensive', '에너지': 'cyclical', '소재': 'cyclical', 
+            '산업재': 'cyclical', '금융': 'cyclical', '임의소비재': 'cyclical',
             '기술': 'growth', '부동산': 'cyclical'
         }
 
@@ -104,7 +101,6 @@ class ExpertQuantSystem:
 
         stock = yf.Ticker(ticker)
         roe, sector = 0, "Unknown"
-        
         try:
             info = stock.info
             roe = info.get('returnOnEquity', 0)
@@ -125,7 +121,6 @@ class ExpertQuantSystem:
         
         sector_map = {'Technology': '기술', 'Financial Services': '금융', 'Healthcare': '헬스케어', 'Consumer Cyclical': '임의소비재', 'Industrials': '산업재', 'Energy': '에너지', 'Consumer Defensive': '필수소비재', 'Basic Materials': '소재', 'Real Estate': '부동산', 'Communication Services': '통신', 'Utilities': '유틸리티'}
         sector = sector_map.get(sector, sector)
-
         return {'roe': roe, 'sector': sector}
 
     def validate_data(self, df):
@@ -150,61 +145,43 @@ class ExpertQuantSystem:
         return df
 
     def calculate_adaptive_score(self, curr, df, spy_perf, roe, sector, max_corr=0):
-        """[핵심] 정밀 점수 산출 시스템"""
-        # 1. 추세 (Trend) - 35점 만점
+        score = 0
         trend_score = 0
         if curr['Close'] > curr['ma200']:
             dist = min(1.0, (curr['Close'] - curr['ma200']) / curr['ma200'] * 5)
-            trend_score += 10 + (10 * dist) # 20점
-            
+            trend_score += 10 + (10 * dist)
             high_60 = df['High'].rolling(60).max().iloc[-2]
             if high_60 > 0:
-                # 신고가 근접도 (15점)
                 prox = max(0, min(1.0, (curr['Close'] - high_60 * 0.85) / (high_60 * 0.15)))
                 trend_score += 15 * prox
         
-        # 2. 모멘텀 (Momentum) - 30점 만점
         mom_score = 0
         perf_3m = (curr['Close'] / df['Close'].iloc[-63]) - 1 if len(df) >= 63 else 0
         alpha = perf_3m - spy_perf
-        
-        if alpha > 0:
-            mom_score += min(25, max(0, (alpha * 100) + 5)) # 알파 크기에 비례 (최대 25점)
-        
+        if alpha > 0: mom_score += min(25, max(0, (alpha * 100) + 5))
         adx = curr['adx']
-        mom_score += min(5, max(0, (adx - 20) / 10 * 5)) # ADX (최대 5점)
+        mom_score += min(5, max(0, (adx - 20) / 10 * 5))
         
-        # 3. 퀄리티 (Quality) - 25점 만점
         qual_score = 0
         if roe > 0:
-            if roe < 0.10: qual_score = roe * 150 # 0.05 -> 7.5점
+            if roe < 0.10: qual_score = roe * 150
             elif roe < 0.20: qual_score = 10 + (roe - 0.10) * 50 
-            else: qual_score = 15 # 15점
-            
-        # 유동성 안정성 (거래량)
+            else: qual_score = 15
         vol_ratio = df['Volume'][-20:].mean() / max(df['Volume'][-60:-20].mean(), 1)
-        qual_score += min(10, max(0, 5 + (vol_ratio - 1) * 2.5)) # 10점
+        qual_score += min(10, max(0, 5 + (vol_ratio - 1) * 2.5))
         
-        # 4. 리스크 (Risk) - 10점 만점
         risk_score = 0
         if curr['atr'] < curr['atr_ma50']: risk_score += 5
-        
         low_10 = df['exit_l'].iloc[-1]
         if curr['ma20'] > low_10 and curr['Close'] > low_10:
             recov = min(1.0, (curr['Close'] - low_10) / (curr['ma20'] - low_10))
             risk_score += 5 * recov
             
-        # === 보너스 & 패널티 ===
         base_score = trend_score + mom_score + qual_score + risk_score
-        
-        # 섹터 보너스 (시장 상황 반영)
         sector_risk = self.sector_risk_profile.get(sector, 'cyclical')
-        if sector_risk == 'defensive' and self.market_regime == 'downtrend':
-            base_score += 5.0
-        elif sector_risk == 'growth' and self.market_regime == 'uptrend':
-            base_score += 5.0
+        if sector_risk == 'defensive' and self.market_regime == 'downtrend': base_score += 5.0
+        elif sector_risk == 'growth' and self.market_regime == 'uptrend': base_score += 5.0
             
-        # 상관성 패널티
         if max_corr > 0.6:
             if max_corr < 0.8: base_score -= (max_corr - 0.6) * 15
             else: base_score -= ((max_corr - 0.8) * 40) + 3.0
@@ -234,7 +211,7 @@ class ExpertQuantSystem:
 
     def generate_html(self, macro_data, my_status, top3, gold_list, scan_results, excluded):
         full_now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        regime_msg = "하락장 방어 모드 (Quality & Alpha 우선)" if self.market_regime == "downtrend" else "추세 추종 모드 (Momentum 우선)"
+        regime_msg = "하락장 방어 모드" if self.market_regime == "downtrend" else "추세 추종 모드"
         
         html = f"""
         <!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
@@ -273,19 +250,19 @@ class ExpertQuantSystem:
             </div>
         </div>
 
-        <div class="card"><h2>🥇 최종 추천 TOP 3 (섹터 분산 + 스마트 필터)</h2>
-            <table><tr><th>종목</th><th>섹터</th><th>점수</th><th>ROE</th><th>현재가</th><th>수량</th><th>상관성</th><th>3M수익</th></tr>
-            {"".join(f"<tr><td><b>{r['ticker']}</b></td><td>{r['sector']}</td><td><span class='score-high'>{r['score']}점</span></td><td>{r['roe']}</td><td>${r['close']:.2f}</td><td>{r['qty']}주</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>" for r in top3)}
+        <div class="card"><h2>🥇 최종 추천 TOP 3 (스마트 분산 + 매매 가이드)</h2>
+            <table><tr><th>종목</th><th>섹터</th><th>점수</th><th>현재가</th><th>수량</th><th>손절가(Cut)</th><th>익절가(Target)</th><th>상관성</th></tr>
+            {"".join(f"<tr><td><b>{r['ticker']}</b></td><td>{r['sector']}</td><td><span class='score-high'>{r['score']}점</span></td><td>${r['close']:.2f}</td><td><b>{r['qty']}주</b></td><td class='loss'>${r['stop']:.2f}</td><td class='profit'>${r['target']:.2f}</td><td>{r['max_corr']:.2f}</td></tr>" for r in top3)}
             </table></div>
 
-        <div class="card"><h2>🌟 슈퍼리드 골든 리스트 (상위 20개)</h2>
-            <table><tr><th>종목</th><th>섹터</th><th>점수</th><th>ROE</th><th>상관성</th><th>3M수익</th></tr>
-            {"".join(f"<tr><td><b>{r['ticker']}</b></td><td>{r['sector']}</td><td><span class='score-high'>{r['score']}점</span></td><td>{r['roe']}</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>" for r in gold_list)}
+        <div class="card"><h2>🌟 슈퍼리드 골든 리스트 (85점 이상)</h2>
+            <table><tr><th>종목</th><th>섹터</th><th>점수</th><th>ROE</th><th>수량</th><th>손절가</th><th>익절가</th><th>상관성</th></tr>
+            {"".join(f"<tr><td><b>{r['ticker']}</b></td><td>{r['sector']}</td><td><span class='score-high'>{r['score']}점</span></td><td>{r['roe']}</td><td>{r['qty']}주</td><td>${r['stop']:.2f}</td><td>${r['target']:.2f}</td><td>{r['max_corr']:.2f}</td></tr>" for r in gold_list)}
             </table></div>
 
         {"".join(f"<div class='card'><h2>[{name}] (총 {res['total']}개 중 {len(res['items'])}개 포착)</h2>" + 
-            "<table><tr><th>종목</th><th>섹터</th><th>점수</th><th>ROE</th><th>상관성</th><th>3M수익</th></tr>" + 
-            "".join(f"<tr class='{'mine' if r.get('is_mine') else ''}'><td><b>{'🏆 ' + r['ticker'] if r.get('is_mine') else r['ticker']}</b></td><td>{r['sector']}</td><td>{r['score']}점</td><td>{r['roe']}</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>" for r in res['items']) + 
+            "<table><tr><th>종목</th><th>섹터</th><th>점수</th><th>현재가</th><th>수량</th><th>손절가</th><th>익절가</th><th>3M수익</th></tr>" + 
+            "".join(f"<tr class='{'mine' if r.get('is_mine') else ''}'><td><b>{'🏆 ' + r['ticker'] if r.get('is_mine') else r['ticker']}</b></td><td>{r['sector']}</td><td>{r['score']}점</td><td>${r['close']:.2f}</td><td>{r['qty']}주</td><td>${r['stop']:.2f}</td><td>${r['target']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>" for r in res['items']) + 
             "</table></div>" for name, res in scan_results.items())}
 
         <div class="card"><h2>⚠️ 중복 위험 종목 (Excluded)</h2>
@@ -302,48 +279,43 @@ class ExpertQuantSystem:
         try:
             subprocess.run(["git", "pull"], check=False, capture_output=True)
             subprocess.run(["git", "add", "."], check=True, capture_output=True)
-            subprocess.run(["git", "commit", "-m", f"Auto Report: {datetime.now().strftime('%Y-%m-%d %H:%M')}"], check=False, capture_output=True)
-            result = subprocess.run(["git", "push"], check=True, capture_output=True, text=True)
+            subprocess.run(["git", "commit", "-m", f"Report: {datetime.now().strftime('%Y-%m-%d %H:%M')}"], check=False, capture_output=True)
+            subprocess.run(["git", "push"], check=True, capture_output=True)
             print(f"   -> [성공] GitHub 업로드 완료!")
         except Exception as e:
             print(f"\n[!!!] GitHub 업로드 실패: {e}")
 
     def run(self):
-        # 1. 매크로
-        print(">>> [1/6] 시장 상태 감지...")
+        print(">>> [1/6] 시장 데이터 확보...")
         macro_results = {}
         try:
             macro_data = yf.download(list(MACRO_ASSETS.keys()), period="6mo", group_by='ticker', progress=False)
             for t, n in MACRO_ASSETS.items():
                 if t in macro_data.columns.levels[0]:
                     d = macro_data[t].dropna()
-                    if not d.empty:
-                        curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
-                        status = "강세 ☀️" if curr > d['Close'].rolling(120).mean().iloc[-1] else "약세 ⛈️"
-                        macro_results[n] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
+                    curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
+                    status = "강세 ☀️" if curr > d['Close'].rolling(120).mean().iloc[-1] else "약세 ⛈️"
+                    macro_results[n] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
             if '^GSPC' in macro_data.columns.levels[0]:
                 self.market_regime = self.detect_market_regime(macro_data['^GSPC'])
                 print(f"   -> 시장 상태: {self.market_regime.upper()}")
         except: self.market_regime = "neutral"
         spy_perf = (macro_results.get('S&P 500', {}).get('curr', 4000) / 4000) - 1
 
-        # 2. 유니버스 구성
-        print(">>> [2/6] 검증된 유니버스 구성 중...")
+        print(">>> [2/6] 유니버스 구성...")
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
             sp_l = pd.read_html(io.StringIO(requests.get('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', headers=headers).text))[0]['Symbol'].str.replace('.', '-').tolist()
             nq_l = pd.read_html(io.StringIO(requests.get('https://en.wikipedia.org/wiki/Nasdaq-100', headers=headers).text))[4]['Ticker'].tolist()
         except: 
-            sp_l, nq_l = ['AAPL','MSFT','GOOG','AMZN','NVDA','TSLA','META'], ['AAPL','MSFT']
+            sp_l, nq_l = ['AAPL','MSFT','GOOG','AMZN','NVDA','JPM','PG','JNJ'], ['AAPL','MSFT','GOOGL','NVDA','PEP','COST']
         sox_l = ['AMD','ADI','ASML','AMAT','AVGO','INTC','KLAC','LRCX','MRVL','MU','NVDA','NXPI','ON','QCOM','STM','SWKS','TSM','TER','TXN']
         all_t = sorted(list(set(sp_l + nq_l + sox_l + [p['ticker'] for p in MY_POSITIONS])))
 
-        # 3. 데이터 다운로드
-        print(f">>>> [3/6] 총 {len(all_t)}개 종목 데이터 다운로드...")
+        print(f">>>> [3/6] 총 {len(all_t)}개 종목 다운로드...")
         data = yf.download(all_t, period="2y", group_by='ticker', progress=True, threads=False)
 
-        # 4. 내 자산 분석
-        print(">>> [4/6] 내 자산 정밀 진단...")
+        print(">>> [4/6] 보유 종목 분석...")
         my_status, holdings_data = [], {}
         for p in tqdm(MY_POSITIONS):
             t = p['ticker']
@@ -354,17 +326,14 @@ class ExpertQuantSystem:
                 info = self.fetch_yf_info(t)
                 self.financials[t] = info
                 score = self.calculate_adaptive_score(df.iloc[-1], df, spy_perf, info['roe'], info['sector'])
-                
                 df_buy = self.calculate_indicators(data[t].loc[:p['entry_date']])
                 buy_score = self.calculate_adaptive_score(df_buy.iloc[-1], df_buy, spy_perf, 0, info['sector']) if df_buy is not None else 0
-                
                 my_status.append({'ticker':t, 'date':p['entry_date'], 'buy':p['price'], 'curr':df['Close'].iloc[-1], 
                                   'profit':(df['Close'].iloc[-1]/p['price']-1)*100, 
                                   'buy_score':buy_score, 'curr_score':score, 'roe':f"{info['roe']*100:.1f}%", 'sector':info['sector'], 'status':"보유(Keep)"})
                 self.save_white_chart(t, df, p['price'], p['entry_date'], "보유(Keep)", score, f"{info['roe']*100:.1f}%", info['sector'])
 
-        # 5. 전수 조사
-        print(">>> [5/6] 유니버스 전수 조사...")
+        print(">>> [5/6] 전수 조사...")
         scans = [("2-1. 반도체(SOX)", sox_l), ("2-2. 나스닥100", nq_l), ("2-3. S&P 500", sp_l)]
         scan_results, all_candidates = {}, []
         seen_tickers = set()
@@ -378,7 +347,6 @@ class ExpertQuantSystem:
                 df = self.calculate_indicators(df)
                 if df is None: continue
                 
-                # 1차 점수 (약식)
                 info = self.fetch_yf_info(t)
                 self.financials[t] = info
                 score = self.calculate_adaptive_score(df.iloc[-1], df, spy_perf, info['roe'], info['sector'])
@@ -391,7 +359,20 @@ class ExpertQuantSystem:
                         corrs = [t_data.corr(h[-60:]) for h in holdings_data.values() if len(h) >= 60]
                         if corrs: max_corr = max(corrs)
                     
-                    item = {'ticker':t, 'score':score, 'roe':f"{info['roe']*100:.1f}%", 'sector':info['sector'], 'close':df['Close'].iloc[-1], 'perf_3m':(df['Close'].iloc[-1]/df['Close'].iloc[-63]-1), 'max_corr':max_corr, 'qty': int(self.risk_money/(df['atr'].iloc[-1]*2*self.usd_krw)) if df['atr'].iloc[-1] > 0 else 0, 'is_mine': t in holdings_data}
+                    # [핵심] 매매 가이드 계산
+                    atr = df['atr'].iloc[-1]
+                    close = df['Close'].iloc[-1]
+                    stop_price = close - (2 * atr)
+                    target_price = close + (4 * atr) # 손익비 1:2
+                    risk_per_share = (close - stop_price) * self.usd_krw
+                    qty = int(self.risk_money / risk_per_share) if risk_per_share > 0 else 0
+                    
+                    item = {
+                        'ticker':t, 'score':score, 'roe':f"{info['roe']*100:.1f}%", 'sector':info['sector'],
+                        'close':close, 'perf_3m':(close/df['Close'].iloc[-63]-1), 'max_corr':max_corr, 
+                        'qty': qty, 'stop': stop_price, 'target': target_price,
+                        'is_mine': t in holdings_data
+                    }
                     found.append(item)
                     if not item['is_mine'] and t not in seen_tickers:
                         all_candidates.append(item)
@@ -401,22 +382,22 @@ class ExpertQuantSystem:
 
         with open(FIN_FILE, 'w') as f: json.dump({'update_date': datetime.now().strftime("%Y-%m-%d"), 'stocks': self.financials}, f)
 
-        # 6. 섹터 쿼터제 적용 TOP 3
+        # 추천 로직 (스마트 필터)
         df_all = pd.DataFrame(all_candidates)
-        top3 = []
         if not df_all.empty:
-            candidates = df_all[df_all['max_corr'] < 0.7].sort_values('score', ascending=False).to_dict('records')
+            top3 = []
+            candidates = df_all[df_all['max_corr'] < 0.6].sort_values('score', ascending=False).to_dict('records')
             picked_sectors = []
-            
-            # 섹터 분산
             for c in candidates:
                 if len(top3) >= 3: break
                 if c['sector'] not in picked_sectors:
-                    top3.append(c)
-                    picked_sectors.append(c['sector'])
+                    top3.append(c); picked_sectors.append(c['sector'])
             
-            # 부족하면 채우기
             if len(top3) < 3:
+                others = df_all[(df_all['max_corr'] < 0.75) & (~df_all['ticker'].isin([x['ticker'] for x in top3]))].sort_values('score', ascending=False).to_dict('records')
+                top3.extend(others[:3-len(top3)])
+            
+            if len(top3) < 3: # 0.85로 최종 확장
                 others = df_all[(df_all['max_corr'] < 0.85) & (~df_all['ticker'].isin([x['ticker'] for x in top3]))].sort_values('score', ascending=False).to_dict('records')
                 top3.extend(others[:3-len(top3)])
 
@@ -432,7 +413,6 @@ if __name__ == "__main__":
         ExpertQuantSystem(CAPITAL_KRW).run()
     except Exception as e:
         print(f"\n[오류] {e}")
-        import traceback
         traceback.print_exc()
     finally:
         input("\n[안내] 엔터를 누르면 종료합니다...")
