@@ -9,7 +9,7 @@ import os
 import subprocess
 import matplotlib.pyplot as plt
 from matplotlib import font_manager, rc
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # =========================================================
 # [시스템 설정] 한글 깨짐 방지 및 시각화 초기화
@@ -25,10 +25,10 @@ except:
     pass
 
 # ================= [기태님의 자산 관리 설정] =================
-CAPITAL_KRW = 23000000   # 예수금
-RISK_RATIO = 0.01        # 리스크 1%
+CAPITAL_KRW = 23000000   
+RISK_RATIO = 0.01        
 
-# [보유 종목] entry_date(매수일) 기준으로 과거 점수를 계산합니다.
+# [보유 종목] 
 MY_POSITIONS = [
     {'ticker': 'GOOGL', 'price': 201.935, 'qty': 69, 'entry_date': '2025-08-13'},
     {'ticker': 'IEX', 'price': 186.77, 'qty': 35, 'entry_date': '2026-01-13'}
@@ -63,17 +63,14 @@ class UltimateGiTaeSystem:
     def calculate_indicators(self, df):
         if df is None or len(df) < 200: return None
         df = df.copy()
-        
-        # ATR & Moving Averages
         df['tr'] = pd.concat([df['High']-df['Low'], abs(df['High']-df['Close'].shift()), abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
         df['atr'] = df['tr'].ewm(span=20, adjust=False).mean()
         df['atr_ma50'] = df['atr'].rolling(50).mean()
         df['ma20'] = df['Close'].rolling(20).mean()
         df['ma200'] = df['Close'].rolling(200).mean()
         df['vol_ma20'] = df['Volume'].rolling(20).mean()
-        df['exit_l'] = df['Low'].rolling(10).min() # 익절가 (10일 저점)
+        df['exit_l'] = df['Low'].rolling(10).min()
         
-        # ADX
         p_dm = df['High'].diff()
         m_dm = df['Low'].diff()
         p_dm = p_dm.where((p_dm > m_dm) & (p_dm > 0), 0.0)
@@ -93,30 +90,46 @@ class UltimateGiTaeSystem:
         vol_r = curr['Volume'] / curr['vol_ma20'] if curr['vol_ma20'] > 0 else 1
         score += min(20, (vol_r / 2.0) * 20)
         squeeze = 1.2 if curr['atr'] < curr['atr_ma50'] else 0.9
-        
-        # Alpha Score
         perf_3m = (curr['Close'] / df['Close'].iloc[-63]) - 1 if len(df) > 63 else 0
         alpha = 1.25 if perf_3m > spy_perf else 1.0
-        
         final_score = score * squeeze * alpha
         if curr['Close'] > curr['ma20'] * 1.08: return 0.0
         return round(final_score, 2)
 
-    def save_position_chart(self, ticker, df, buy_price):
+    def save_position_chart(self, ticker, df, buy_price, entry_date):
         os.makedirs("Charts", exist_ok=True)
-        plt.figure(figsize=(12, 6))
-        plot_data = df.tail(60)
-        plt.plot(plot_data.index, plot_data['Close'], label='현재가', color='white', linewidth=2)
-        plt.axhline(y=buy_price, color='gold', linestyle='--', label=f'매수가 (${buy_price})')
-        plt.plot(plot_data.index, plot_data['Close'] - (2 * plot_data['atr']), color='red', alpha=0.5, label='손절선 (2ATR)')
-        plt.step(plot_data.index, plot_data['exit_l'], color='cyan', where='post', label='익절선 (10일 최저)')
-        plt.title(f"{ticker} 수익 관리 차트", color='white', fontsize=14, fontweight='bold')
-        plt.legend(loc='upper left', fontsize=10)
-        plt.grid(True, alpha=0.2, linestyle='--')
+        
+        # [수정] 매수일 - 10일부터 데이터 자르기
+        try:
+            start_dt = datetime.strptime(entry_date, "%Y-%m-%d") - timedelta(days=10)
+            plot_data = df.loc[start_dt:]
+        except:
+            plot_data = df.tail(60) # 날짜 에러나면 그냥 최근 60일
+
+        plt.figure(figsize=(14, 7)) # [수정] 그래프 크기 확대
+        
+        plt.plot(plot_data.index, plot_data['Close'], label='현재가', color='white', linewidth=2.5)
+        plt.axhline(y=buy_price, color='gold', linestyle='--', linewidth=2, label=f'매수가 (${buy_price})')
+        
+        # 손절선, 익절선 그리기
+        stop_line = plot_data['Close'] - (2 * plot_data['atr'])
+        plt.plot(plot_data.index, stop_line, color='#ff4757', alpha=0.6, linewidth=1.5, label='손절선 (2ATR)')
+        plt.step(plot_data.index, plot_data['exit_l'], color='#00d2d3', where='post', linewidth=2, label='익절선 (10일 최저)')
+        
+        # 매수 지점 표시
+        try:
+            plt.scatter(pd.to_datetime(entry_date), buy_price, color='gold', s=150, zorder=5, edgecolors='white', label='매수 체결')
+        except: pass
+
+        plt.title(f"{ticker} 수익 추적 차트 (매수일: {entry_date})", color='white', fontsize=16, fontweight='bold', pad=20)
+        plt.legend(loc='upper left', fontsize=12, facecolor='#2d3436', edgecolor='white')
+        plt.grid(True, alpha=0.15, linestyle='--')
+        
         plt.gca().set_facecolor('#1e1e1e')
         plt.gcf().set_facecolor('#121212')
-        plt.tick_params(colors='white')
+        plt.tick_params(colors='white', labelsize=11)
         for spine in plt.gca().spines.values(): spine.set_color('#555')
+            
         plt.savefig(f"Charts/{ticker}_tracking.png", dpi=100, bbox_inches='tight')
         plt.close()
 
@@ -125,6 +138,7 @@ class UltimateGiTaeSystem:
         full_now = datetime.now().strftime("%Y-%m-%d %H:%M")
         os.makedirs("Reports", exist_ok=True)
         
+        # [수정] 테이블 생성 함수: 내 종목 강조 기능 추가
         def make_table(data_list, is_pos=False):
             if not data_list: return "<p style='text-align:center; color:#777;'>데이터 없음</p>"
             rows = ""
@@ -135,11 +149,17 @@ class UltimateGiTaeSystem:
                 cols = "<th>종목</th><th>매수가</th><th>현재가</th><th>수익률</th><th>매수당시 점수</th><th>현재 점수</th><th>상태</th>"
             else:
                 for r in data_list:
+                    # [핵심] 내 종목이면 강조 표시!
+                    is_mine = r.get('is_mine', False)
+                    row_style = "background-color: #2c3e50; border: 2px solid gold;" if is_mine else ""
+                    ticker_disp = f"🏆 {r['ticker']} (보유중)" if is_mine else r['ticker']
+                    
                     unit = int(self.risk_money / (r['atr'] * 2 * self.usd_krw))
-                    rows += f"<tr><td><b>{r['ticker']}</b></td><td>{r['score']}</td><td>${r['close']:.2f}</td><td>{unit}주</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>"
+                    rows += f"<tr style='{row_style}'><td><b>{ticker_disp}</b></td><td>{r['score']}</td><td>${r['close']:.2f}</td><td>{unit}주</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>"
                 cols = "<th>종목</th><th>점수</th><th>현재가</th><th>수량</th><th>상관성</th><th>3M수익</th>"
             return f"<table><tr>{cols}</tr>{rows}</table>"
 
+        # [수정] HTML 스타일: 이미지 클릭 시 확대(Lightbox) 기능 추가
         html = f"""
         <!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
         <style>
@@ -150,12 +170,34 @@ class UltimateGiTaeSystem:
         table{{width:100%;border-collapse:collapse;margin-top:15px;font-size:14px;}} 
         th{{background:#2c3e50;color:#f1c40f;padding:12px;text-align:left;border:1px solid #444;}}
         td{{border:1px solid #444;padding:12px;}}
+        
+        /* 차트 스타일 & 클릭 확대 효과 */
         .chart-container{{display:flex;flex-wrap:wrap;justify-content:space-between;}}
-        .chart-box{{width:49%;margin-bottom:20px;text-align:center;}}
+        .chart-box{{width:48%;margin-bottom:20px;text-align:center;cursor:pointer;}}
         .chart-img{{width:100%;border-radius:8px;border:2px solid #444;transition:transform 0.2s;}}
-        .chart-img:hover{{transform:scale(1.02);border-color:#f1c40f;}}
+        .chart-img:hover{{transform:scale(1.03);border-color:#f1c40f;}}
+        
+        /* 팝업(Lightbox) 스타일 */
+        .lightbox {{display:none;position:fixed;z-index:999;padding-top:50px;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.9);}}
+        .lightbox-content {{margin:auto;display:block;width:90%;max-width:1200px;}}
+        .close {{position:absolute;top:15px;right:35px;color:#f1c40f;font-size:40px;font-weight:bold;cursor:pointer;}}
+        
         .bull {{color: #ff4757;}} .bear {{color: #2e86de;}}
-        </style></head><body><div class="container">
+        </style>
+        <script>
+        function openModal(src) {{
+            document.getElementById('myModal').style.display = "block";
+            document.getElementById("img01").src = src;
+        }}
+        function closeModal() {{ document.getElementById('myModal').style.display = "none"; }}
+        </script>
+        </head><body><div class="container">
+        
+        <div id="myModal" class="lightbox">
+          <span class="close" onclick="closeModal()">&times;</span>
+          <img class="lightbox-content" id="img01">
+        </div>
+
         <h1>📊 기태님 자산 관리 대시보드 ({full_now})</h1>
         
         <div class="card"><h2>[0] 글로벌 시장 요약</h2>
@@ -165,9 +207,9 @@ class UltimateGiTaeSystem:
 
         <div class="card"><h2>✅ [MY] 보유 종목 점수 분석 (매수 vs 현재)</h2>{make_table(my_status, is_pos=True)}</div>
         
-        <div class="card"><h2>📈 [MY] 수익 관리 차트</h2>
+        <div class="card"><h2>📈 [MY] 수익 관리 차트 (클릭하여 확대)</h2>
             <div class="chart-container">
-            {''.join([f'<div class="chart-box"><img src="../Charts/{p["ticker"]}_tracking.png" class="chart-img"></div>' for p in MY_POSITIONS])}
+            {''.join([f'<div class="chart-box" onclick="openModal(\'../Charts/{p["ticker"]}_tracking.png\')"><img src="../Charts/{p["ticker"]}_tracking.png" class="chart-img"></div>' for p in MY_POSITIONS])}
             </div></div>
         
         <div class="card"><h2>🥇 최종 추천 TOP 3 (안전 분산)</h2>{make_table(top_3.to_dict('records'))}</div>
@@ -201,58 +243,51 @@ class UltimateGiTaeSystem:
                 status = "강세 ☀️" if curr > d['Close'].rolling(200).mean().iloc[-1] else "약세 ⛈️"
                 macro_results[name] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
 
-        # 1. 내 종목 분석 (매수 시점 점수 역산출)
+        # 1. 내 종목 분석
         my_status = []
         holdings_data = {}
         for p in MY_POSITIONS:
             t = p['ticker']
             if t not in data.columns.levels[0]: continue
             
-            # 현재 상태
             df_curr = self.calculate_indicators(data[t].dropna())
             curr_score = self.calculate_super_lead_score(df_curr.iloc[-1], df_curr, spy_perf)
             holdings_data[t] = df_curr['Close']
             
-            # 매수 시점 상태 (과거 데이터 슬라이싱)
+            # 매수 시점 점수 역산출
             try:
-                # 매수일 기준 과거 데이터만 자름
                 df_buy_hist = data[t].loc[:p['entry_date']]
-                # SPY 매수 시점 데이터
                 spy_buy_hist = data['^GSPC'].loc[:p['entry_date']]
                 spy_perf_buy = (spy_buy_hist['Close'].iloc[-1] / spy_buy_hist['Close'].iloc[-63]) - 1 if len(spy_buy_hist) > 63 else 0
-                
-                # 지표 및 점수 계산
                 df_buy = self.calculate_indicators(df_buy_hist)
                 buy_score = self.calculate_super_lead_score(df_buy.iloc[-1], df_buy, spy_perf_buy)
             except:
-                buy_score = 0 # 데이터 부족 시 0점 처리
+                buy_score = 0
                 
             curr = df_curr['Close'].iloc[-1]
             stop = curr - (2 * df_curr['atr'].iloc[-1])
             exit_l = df_curr['exit_l'].iloc[-1]
             status = "⚠️ 매도신호" if curr < exit_l else ("⚠️ 손절위험" if curr < stop else "보유(Keep)")
             
-            my_status.append({
-                'ticker': t, 'buy': p['price'], 'curr': curr, 
-                'profit': (curr/p['price']-1)*100, 'stop': stop, 'exit': exit_l, 'status': status,
-                'buy_score': buy_score, 'curr_score': curr_score
-            })
-            self.save_position_chart(t, df_curr, p['price'])
-            print(f">>> [보유] {t}: 현재 {curr_score}점 (매수시 {buy_score}점)")
+            my_status.append({'ticker': t, 'buy': p['price'], 'curr': curr, 'profit': (curr/p['price']-1)*100, 'stop': stop, 'exit': exit_l, 'status': status, 'buy_score': buy_score, 'curr_score': curr_score})
+            # [수정] 차트에 매수일 정보 전달
+            self.save_position_chart(t, df_curr, p['price'], p['entry_date'])
+            print(f">>> [보유] {t}: 현재 {curr_score}점")
 
-        # 2. 인덱스별 전수조사 (카운트 기능 추가)
+        # 2. 인덱스별 전수조사 (내 종목 포함하여 강조 표시)
         indices_to_scan = [("2-1. 반도체(SOX)", sox_list), ("2-2. 나스닥100", nq_list), ("2-3. S&P 500", sp_list)]
-        web_indices_results = {} # 구조 변경: {'2-1...': {'items': [], 'total': 30}}
+        web_indices_results = {} 
         all_signals = []
         
         print("\n>>> [탐색] 인덱스별 전수조사 시작...")
         
         for idx_name, t_list in indices_to_scan:
-            print(f"    - {idx_name} 스캔 중... (총 {len(t_list)}개)")
+            print(f"    - {idx_name} 스캔 중...")
             found_items = []
             
             for t in t_list:
-                if t in my_tickers or t in MACRO_ASSETS: continue
+                # [수정] 내 종목도 분석 대상에 포함 (단, 추천에선 제외하기 위해 플래그 표시)
+                if t in MACRO_ASSETS: continue
                 if t not in data.columns.levels[0]: continue
                 
                 df = self.calculate_indicators(data[t].dropna())
@@ -264,13 +299,17 @@ class UltimateGiTaeSystem:
                     if holdings_data:
                         max_corr = max([df['Close'].corr(h_close) for h_close in holdings_data.values()])
                     
+                    is_mine = t in my_tickers # 내 종목 여부 확인
+                    
                     s = {'ticker': t, 'close': df.iloc[-1]['Close'], 'atr': df.iloc[-1]['atr'], 'score': score, 
-                         'max_corr': max_corr, 'perf_3m': (df.iloc[-1]['Close']/df['Close'].iloc[-63]-1), 'sector': sp_sectors.get(t, "기타")}
+                         'max_corr': max_corr, 'perf_3m': (df.iloc[-1]['Close']/df['Close'].iloc[-63]-1), 
+                         'sector': sp_sectors.get(t, "기타"), 'is_mine': is_mine}
                     
                     found_items.append(s)
-                    all_signals.append(s)
+                    # 내 종목이 아니면 추천 후보로 등록
+                    if not is_mine:
+                        all_signals.append(s)
             
-            # 결과 저장 (총 개수 포함)
             web_indices_results[idx_name] = {'items': found_items, 'total': len(t_list)}
 
         # 3. 결과 정리
@@ -292,7 +331,7 @@ class UltimateGiTaeSystem:
                     f.write(f"{best['ticker']},{unit}")
                     
         self.generate_html_report(macro_results, web_indices_results, gold_list, top_3, excluded, my_status)
-        print(f">>> [완료] 리포트 생성 끝. (Top 1: {top_3.iloc[0]['ticker'] if not top_3.empty else '없음'})")
+        print(f">>> [완료] 리포트 생성 끝.")
 
         try:
             subprocess.run(["git", "add", "."], check=True)
