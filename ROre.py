@@ -28,7 +28,7 @@ except:
 CAPITAL_KRW = 23000000   # 예수금
 RISK_RATIO = 0.01        # 리스크 1%
 
-# [보유 종목] 
+# [보유 종목] entry_date(매수일) 기준으로 과거 점수를 계산합니다.
 MY_POSITIONS = [
     {'ticker': 'GOOGL', 'price': 201.935, 'qty': 69, 'entry_date': '2025-08-13'},
     {'ticker': 'IEX', 'price': 186.77, 'qty': 35, 'entry_date': '2026-01-13'}
@@ -63,14 +63,17 @@ class UltimateGiTaeSystem:
     def calculate_indicators(self, df):
         if df is None or len(df) < 200: return None
         df = df.copy()
+        
+        # ATR & Moving Averages
         df['tr'] = pd.concat([df['High']-df['Low'], abs(df['High']-df['Close'].shift()), abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
         df['atr'] = df['tr'].ewm(span=20, adjust=False).mean()
         df['atr_ma50'] = df['atr'].rolling(50).mean()
         df['ma20'] = df['Close'].rolling(20).mean()
         df['ma200'] = df['Close'].rolling(200).mean()
         df['vol_ma20'] = df['Volume'].rolling(20).mean()
-        df['exit_l'] = df['Low'].rolling(10).min() # 익절가
+        df['exit_l'] = df['Low'].rolling(10).min() # 익절가 (10일 저점)
         
+        # ADX
         p_dm = df['High'].diff()
         m_dm = df['Low'].diff()
         p_dm = p_dm.where((p_dm > m_dm) & (p_dm > 0), 0.0)
@@ -90,8 +93,11 @@ class UltimateGiTaeSystem:
         vol_r = curr['Volume'] / curr['vol_ma20'] if curr['vol_ma20'] > 0 else 1
         score += min(20, (vol_r / 2.0) * 20)
         squeeze = 1.2 if curr['atr'] < curr['atr_ma50'] else 0.9
+        
+        # Alpha Score
         perf_3m = (curr['Close'] / df['Close'].iloc[-63]) - 1 if len(df) > 63 else 0
         alpha = 1.25 if perf_3m > spy_perf else 1.0
+        
         final_score = score * squeeze * alpha
         if curr['Close'] > curr['ma20'] * 1.08: return 0.0
         return round(final_score, 2)
@@ -120,13 +126,13 @@ class UltimateGiTaeSystem:
         os.makedirs("Reports", exist_ok=True)
         
         def make_table(data_list, is_pos=False):
-            if not data_list: return "<p style='text-align:center; color:#777;'>종목 없음</p>"
+            if not data_list: return "<p style='text-align:center; color:#777;'>데이터 없음</p>"
             rows = ""
             if is_pos:
                 for r in data_list:
                     color = "#ff4757" if r['profit'] < 0 else "#2ecc71"
-                    rows += f"<tr><td><b>{r['ticker']}</b></td><td>${r['buy']:.2f}</td><td>${r['curr']:.2f}</td><td style='color:{color}; font-weight:bold;'>{r['profit']:+.2f}%</td><td>${r['stop']:.2f}</td><td>${r['exit']:.2f}</td><td>{r['status']}</td></tr>"
-                cols = "<th>종목</th><th>매수가</th><th>현재가</th><th>수익률</th><th>손절가</th><th>익절가</th><th>상태</th>"
+                    rows += f"<tr><td><b>{r['ticker']}</b></td><td>${r['buy']:.2f}</td><td>${r['curr']:.2f}</td><td style='color:{color}; font-weight:bold;'>{r['profit']:+.2f}%</td><td style='color:gold;'>{r['buy_score']}점</td><td style='color:white;'>{r['curr_score']}점</td><td>{r['status']}</td></tr>"
+                cols = "<th>종목</th><th>매수가</th><th>현재가</th><th>수익률</th><th>매수당시 점수</th><th>현재 점수</th><th>상태</th>"
             else:
                 for r in data_list:
                     unit = int(self.risk_money / (r['atr'] * 2 * self.usd_krw))
@@ -157,7 +163,7 @@ class UltimateGiTaeSystem:
             {"".join(f"<tr><td>{n}</td><td>{v['curr']:.2f}</td><td class='{'bull' if v['pct']>0 else 'bear'}'>{v['pct']:+.2f}%</td><td>{v['status']}</td></tr>" for n, v in macro_data.items())}
             </table></div>
 
-        <div class="card"><h2>✅ [MY] 보유 종목 현황</h2>{make_table(my_status, is_pos=True)}</div>
+        <div class="card"><h2>✅ [MY] 보유 종목 점수 분석 (매수 vs 현재)</h2>{make_table(my_status, is_pos=True)}</div>
         
         <div class="card"><h2>📈 [MY] 수익 관리 차트</h2>
             <div class="chart-container">
@@ -167,9 +173,9 @@ class UltimateGiTaeSystem:
         <div class="card"><h2>🥇 최종 추천 TOP 3 (안전 분산)</h2>{make_table(top_3.to_dict('records'))}</div>
         <div class="card"><h2>🌟 초엄격 '슈퍼리드' 골든 리스트 (130점 이상)</h2>{make_table(gold_list)}</div>
 
-        <div class="card"><h2>[2-1] 반도체(SOX) 전수조사</h2>{make_table(indices_results['2-1. 반도체(SOX)'])}</div>
-        <div class="card"><h2>[2-2] 나스닥100 전수조사</h2>{make_table(indices_results['2-2. 나스닥100'])}</div>
-        <div class="card"><h2>[2-3] S&P 500 전수조사</h2>{make_table(indices_results['2-3. S&P 500'])}</div>
+        <div class="card"><h2>[2-1] 반도체(SOX) (총 {indices_results['2-1. 반도체(SOX)']['total']}개 중 {len(indices_results['2-1. 반도체(SOX)']['items'])}개 포착)</h2>{make_table(indices_results['2-1. 반도체(SOX)']['items'])}</div>
+        <div class="card"><h2>[2-2] 나스닥100 (총 {indices_results['2-2. 나스닥100']['total']}개 중 {len(indices_results['2-2. 나스닥100']['items'])}개 포착)</h2>{make_table(indices_results['2-2. 나스닥100']['items'])}</div>
+        <div class="card"><h2>[2-3] S&P 500 (총 {indices_results['2-3. S&P 500']['total']}개 중 {len(indices_results['2-3. S&P 500']['items'])}개 포착)</h2>{make_table(indices_results['2-3. S&P 500']['items'])}</div>
 
         <div class="card"><h2>⚠️ 중복 위험 종목 (Excluded)</h2>{make_table(excluded.head(10).to_dict('records'))}</div>
         </div></body></html>
@@ -195,31 +201,56 @@ class UltimateGiTaeSystem:
                 status = "강세 ☀️" if curr > d['Close'].rolling(200).mean().iloc[-1] else "약세 ⛈️"
                 macro_results[name] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
 
-        # 1. 내 종목 분석
+        # 1. 내 종목 분석 (매수 시점 점수 역산출)
         my_status = []
         holdings_data = {}
         for p in MY_POSITIONS:
             t = p['ticker']
             if t not in data.columns.levels[0]: continue
-            df = self.calculate_indicators(data[t].dropna())
-            holdings_data[t] = df['Close']
-            curr = df['Close'].iloc[-1]
-            stop = curr - (2 * df['atr'].iloc[-1])
-            exit_l = df['exit_l'].iloc[-1]
+            
+            # 현재 상태
+            df_curr = self.calculate_indicators(data[t].dropna())
+            curr_score = self.calculate_super_lead_score(df_curr.iloc[-1], df_curr, spy_perf)
+            holdings_data[t] = df_curr['Close']
+            
+            # 매수 시점 상태 (과거 데이터 슬라이싱)
+            try:
+                # 매수일 기준 과거 데이터만 자름
+                df_buy_hist = data[t].loc[:p['entry_date']]
+                # SPY 매수 시점 데이터
+                spy_buy_hist = data['^GSPC'].loc[:p['entry_date']]
+                spy_perf_buy = (spy_buy_hist['Close'].iloc[-1] / spy_buy_hist['Close'].iloc[-63]) - 1 if len(spy_buy_hist) > 63 else 0
+                
+                # 지표 및 점수 계산
+                df_buy = self.calculate_indicators(df_buy_hist)
+                buy_score = self.calculate_super_lead_score(df_buy.iloc[-1], df_buy, spy_perf_buy)
+            except:
+                buy_score = 0 # 데이터 부족 시 0점 처리
+                
+            curr = df_curr['Close'].iloc[-1]
+            stop = curr - (2 * df_curr['atr'].iloc[-1])
+            exit_l = df_curr['exit_l'].iloc[-1]
             status = "⚠️ 매도신호" if curr < exit_l else ("⚠️ 손절위험" if curr < stop else "보유(Keep)")
-            my_status.append({'ticker': t, 'buy': p['price'], 'curr': curr, 'profit': (curr/p['price']-1)*100, 'stop': stop, 'exit': exit_l, 'status': status})
-            self.save_position_chart(t, df, p['price'])
-            print(f">>> [보유] {t}: {status}")
+            
+            my_status.append({
+                'ticker': t, 'buy': p['price'], 'curr': curr, 
+                'profit': (curr/p['price']-1)*100, 'stop': stop, 'exit': exit_l, 'status': status,
+                'buy_score': buy_score, 'curr_score': curr_score
+            })
+            self.save_position_chart(t, df_curr, p['price'])
+            print(f">>> [보유] {t}: 현재 {curr_score}점 (매수시 {buy_score}점)")
 
-        # 2. 인덱스별 전수조사 (기태님이 원하신 2-1, 2-2, 2-3 복구)
+        # 2. 인덱스별 전수조사 (카운트 기능 추가)
         indices_to_scan = [("2-1. 반도체(SOX)", sox_list), ("2-2. 나스닥100", nq_list), ("2-3. S&P 500", sp_list)]
-        web_indices_results = {name: [] for name, _ in indices_to_scan}
+        web_indices_results = {} # 구조 변경: {'2-1...': {'items': [], 'total': 30}}
         all_signals = []
         
         print("\n>>> [탐색] 인덱스별 전수조사 시작...")
         
         for idx_name, t_list in indices_to_scan:
-            print(f"    - {idx_name} 스캔 중...")
+            print(f"    - {idx_name} 스캔 중... (총 {len(t_list)}개)")
+            found_items = []
+            
             for t in t_list:
                 if t in my_tickers or t in MACRO_ASSETS: continue
                 if t not in data.columns.levels[0]: continue
@@ -236,8 +267,11 @@ class UltimateGiTaeSystem:
                     s = {'ticker': t, 'close': df.iloc[-1]['Close'], 'atr': df.iloc[-1]['atr'], 'score': score, 
                          'max_corr': max_corr, 'perf_3m': (df.iloc[-1]['Close']/df['Close'].iloc[-63]-1), 'sector': sp_sectors.get(t, "기타")}
                     
-                    web_indices_results[idx_name].append(s)
+                    found_items.append(s)
                     all_signals.append(s)
+            
+            # 결과 저장 (총 개수 포함)
+            web_indices_results[idx_name] = {'items': found_items, 'total': len(t_list)}
 
         # 3. 결과 정리
         df_all = pd.DataFrame(all_signals).drop_duplicates('ticker')
@@ -246,10 +280,7 @@ class UltimateGiTaeSystem:
         gold_list = []
         
         if not df_all.empty:
-            # 점수 기준 130점 유지 (원복)
             gold_list = df_all[df_all['score'] >= 130].sort_values('score', ascending=False).to_dict('records')
-            
-            # TOP 3 선정
             passed = df_all[df_all['max_corr'] < 0.5].sort_values('score', ascending=False)
             top_3 = passed.groupby('sector').head(1).sort_values('score', ascending=False).head(3)
             excluded = df_all[~df_all.index.isin(top_3.index)].sort_values('score', ascending=False)
