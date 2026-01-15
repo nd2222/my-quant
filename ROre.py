@@ -40,6 +40,9 @@ MY_POSITIONS = [
     {'ticker': 'IEX', 'price': 186.77, 'qty': 35, 'entry_date': '2026-01-13'}
 ]
 
+# [수정] SNDK 등 데이터 오류 종목 블랙리스트 처리
+BLACKLIST = ['SNDK', 'NTAP'] 
+
 MACRO_ASSETS = {
     '^GSPC': 'S&P 500', '^IXIC': '나스닥 종합', '^SOX': '필라델피아 반도체',
     'GLD': '금(Gold)', 'SLV': '은(Silver)', 'USO': '원유(Crude)',
@@ -53,14 +56,18 @@ class ExpertQuantSystem:
         self.risk_money = capital * RISK_RATIO
         self.market_regime = "neutral"
         
-        # 구버전/오염된 데이터 파일 초기화
+        # [핵심] 구버전/오류 데이터 파일 자동 초기화 (KeyError 방지)
         if os.path.exists(FIN_FILE):
             try:
                 with open(FIN_FILE, 'r') as f:
                     data = json.load(f)
-                    if not data.get('stocks'):
-                        f.close(); os.remove(FIN_FILE)
-            except: os.remove(FIN_FILE)
+                    # 데이터가 비었거나, 샘플에 'sector' 키가 없으면 삭제
+                    if not data.get('stocks') or 'sector' not in list(data['stocks'].values())[0]:
+                        print(">>> [알림] 데이터 파일 형식이 구버전입니다. 초기화합니다.")
+                        f.close()
+                        os.remove(FIN_FILE)
+            except: 
+                os.remove(FIN_FILE)
             
         self.financials = self.load_financials()
         
@@ -93,35 +100,17 @@ class ExpertQuantSystem:
         elif curr > ma200 and perf_1m > 0.03: return "uptrend"
         else: return "neutral"
 
-    def validate_ticker_realtime(self, ticker, info):
-        """[핵심] 실시간 데이터 검증 (좀비/상폐 차단)"""
-        try:
-            # 1. 가격 확인
-            if info.get('regularMarketPrice', 0) <= 0 and info.get('previousClose', 0) <= 0: return False
-            # 2. 거래소 확인 (미국 주요장)
-            # if info.get('exchange') not in ['NMS', 'NGS', 'NYQ', 'NCM', 'ASE']: return False # 너무 엄격하면 주석 처리
-            # 3. 거래량 확인 (유동성)
-            if info.get('averageVolume10days', 0) < 50000: return False
-            # 4. 상폐 키워드 확인
-            if 'delisted' in str(info.get('longName', '')).lower(): return False
-            
-            return True
-        except: return False
-
     def fetch_yf_info(self, ticker):
         if ticker in self.financials:
-            return self.financials[ticker]
+            item = self.financials[ticker]
+            if item.get('roe') != 0 and 'sector' in item:
+                return item
 
         stock = yf.Ticker(ticker)
         roe, sector = 0, "Unknown"
-        info = {}
         
         try:
             info = stock.info
-            # [검증] 실시간 유효성 체크
-            if not self.validate_ticker_realtime(ticker, info):
-                return {'valid': False}
-                
             roe = info.get('returnOnEquity', 0)
             sector = info.get('sector', 'Unknown')
         except: pass
@@ -138,10 +127,17 @@ class ExpertQuantSystem:
         if roe is None: roe = 0
         roe = max(min(roe, 1.0), -1.0)
         
-        sector_map = {'Technology': '기술', 'Financial Services': '금융', 'Healthcare': '헬스케어', 'Consumer Cyclical': '임의소비재', 'Industrials': '산업재', 'Energy': '에너지', 'Consumer Defensive': '필수소비재', 'Basic Materials': '소재', 'Real Estate': '부동산', 'Communication Services': '통신', 'Utilities': '유틸리티'}
+        # [수정] 섹터 매핑 세분화
+        sector_map = {
+            'Technology': '기술', 'Semiconductors': '반도체', # 반도체 분리
+            'Financial Services': '금융', 'Healthcare': '헬스케어', 
+            'Consumer Cyclical': '임의소비재', 'Industrials': '산업재', 
+            'Energy': '에너지', 'Consumer Defensive': '필수소비재', 
+            'Basic Materials': '소재', 'Real Estate': '부동산', 
+            'Communication Services': '통신', 'Utilities': '유틸리티'
+        }
         sector = sector_map.get(sector, sector)
-        
-        return {'roe': roe, 'sector': sector, 'valid': True}
+        return {'roe': roe, 'sector': sector}
 
     def validate_data(self, df):
         if df is None or df.empty or len(df) < 150: return False
@@ -165,8 +161,9 @@ class ExpertQuantSystem:
         return df
 
     def calculate_adaptive_score(self, curr, df, spy_perf, roe, sector, max_corr=0):
-        # ... (기존 점수 로직 유지 - 코드 길이상 생략, 로직은 동일) ...
-        # 전체 로직은 동일하게 적용
+        # [핵심] ROE 마이너스 필터링 (부실기업 원천 차단)
+        if roe < 0: return 0 
+        
         score = 0
         trend_score = 0
         if curr['Close'] > curr['ma200']:
@@ -205,6 +202,7 @@ class ExpertQuantSystem:
         if self.market_regime == 'downtrend' and sector_risk == 'defensive': base_score += 10.0
         elif self.market_regime == 'uptrend' and sector_risk == 'growth': base_score += 10.0
             
+        # 상관성 감점 (유지)
         if max_corr > 0.6:
             if max_corr < 0.8: base_score -= (max_corr - 0.6) * 15
             else: base_score -= ((max_corr - 0.8) * 40) + 3.0
@@ -316,17 +314,16 @@ class ExpertQuantSystem:
             for t, n in MACRO_ASSETS.items():
                 if t in macro_data.columns.levels[0]:
                     d = macro_data[t].dropna()
-                    if not d.empty:
-                        curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
-                        status = "강세 ☀️" if curr > d['Close'].rolling(120).mean().iloc[-1] else "약세 ⛈️"
-                        macro_results[n] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
+                    curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
+                    status = "강세 ☀️" if curr > d['Close'].rolling(120).mean().iloc[-1] else "약세 ⛈️"
+                    macro_results[n] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
             if '^GSPC' in macro_data.columns.levels[0]:
                 self.market_regime = self.detect_market_regime(macro_data['^GSPC'])
                 print(f"   -> 시장 상태: {self.market_regime.upper()}")
         except: self.market_regime = "neutral"
         spy_perf = (macro_results.get('S&P 500', {}).get('curr', 4000) / 4000) - 1
 
-        print(">>> [2/6] 유니버스 구성...")
+        print(">>> [2/6] 유니버스 구성 (블랙리스트 제외)...")
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
             sp_l = pd.read_html(io.StringIO(requests.get('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', headers=headers).text))[0]['Symbol'].str.replace('.', '-').tolist()
@@ -334,7 +331,10 @@ class ExpertQuantSystem:
         except: 
             sp_l, nq_l = ['AAPL','MSFT','GOOG','AMZN','NVDA','JPM','PG','JNJ'], ['AAPL','MSFT','GOOGL','NVDA','PEP','COST']
         sox_l = ['AMD','ADI','ASML','AMAT','AVGO','INTC','KLAC','LRCX','MRVL','MU','NVDA','NXPI','ON','QCOM','STM','SWKS','TSM','TER','TXN']
+        
         all_t = sorted(list(set(sp_l + nq_l + sox_l + [p['ticker'] for p in MY_POSITIONS])))
+        # [수정] 블랙리스트 제거
+        all_t = [t for t in all_t if t not in BLACKLIST]
 
         print(f">>>> [3/6] 총 {len(all_t)}개 종목 다운로드...")
         data = yf.download(all_t, period="2y", group_by='ticker', progress=True, threads=False)
@@ -362,33 +362,35 @@ class ExpertQuantSystem:
         scan_results, all_candidates = {}, []
         seen_tickers = set()
 
-        # [수정] 동적 상관성 기준 적용
-        corr_threshold = 0.45 if self.market_regime == 'downtrend' else 0.65
-
         for name, t_list in scans:
             found = []
             for t in tqdm(t_list, desc=name):
-                if t not in data or t in MACRO_ASSETS: continue
+                # 블랙리스트 재확인
+                if t in BLACKLIST or t not in data or t in MACRO_ASSETS: continue
                 df = data[t].dropna()
                 if not self.validate_data(df): continue
                 df = self.calculate_indicators(df)
                 if df is None: continue
                 
-                info = self.fetch_yf_info(t)
-                # 유효성 검증 실패 시 패스
-                if info.get('valid') == False: continue
+                # [수정] 상관성 우선 필터링 (보유종목과 유사하면 미리 탈락)
+                t_data = df['Close'][-60:]
+                max_corr = 0
+                if holdings_data:
+                    corrs = [t_data.corr(h[-60:]) for h in holdings_data.values() if len(h) >= 60]
+                    if corrs: max_corr = max(corrs)
                 
+                # 하락장이면 0.45 이상은 쳐다보지도 않음
+                limit_corr = 0.45 if self.market_regime == 'downtrend' else 0.70
+                if max_corr > limit_corr and not t in holdings_data: continue
+
+                info = self.fetch_yf_info(t)
                 self.financials[t] = info
-                score = self.calculate_adaptive_score(df.iloc[-1], df, spy_perf, info['roe'], info['sector'])
+                
+                # [핵심] ROE 마이너스 체크 (점수 계산 함수 내 포함)
+                score = self.calculate_adaptive_score(df.iloc[-1], df, spy_perf, info['roe'], info['sector'], max_corr)
                 
                 cutoff = 35 if self.market_regime == "downtrend" else 65
                 if score >= cutoff:
-                    t_data = df['Close'][-60:]
-                    max_corr = 0
-                    if holdings_data:
-                        corrs = [t_data.corr(h[-60:]) for h in holdings_data.values() if len(h) >= 60]
-                        if corrs: max_corr = max(corrs)
-                    
                     atr = df['atr'].iloc[-1]
                     close = df['Close'].iloc[-1]
                     stop_price = close - (2 * atr)
@@ -415,25 +417,21 @@ class ExpertQuantSystem:
         df_all = pd.DataFrame(all_candidates)
         if not df_all.empty:
             top3 = []
-            # 1. 엄격한 상관성 필터 (시장 상황 반영)
-            candidates = df_all[df_all['max_corr'] < corr_threshold].sort_values('score', ascending=False).to_dict('records')
+            candidates = df_all.sort_values('score', ascending=False).to_dict('records')
             picked_sectors = []
+            
             for c in candidates:
                 if len(top3) >= 3: break
                 if c['sector'] not in picked_sectors:
                     top3.append(c); picked_sectors.append(c['sector'])
             
-            # 2. 부족하면 완화
+            # 부족하면 채우기
             if len(top3) < 3:
-                others = df_all[(df_all['max_corr'] < 0.75) & (~df_all['ticker'].isin([x['ticker'] for x in top3]))].sort_values('score', ascending=False).to_dict('records')
-                top3.extend(others[:3-len(top3)])
-                
-            if len(top3) < 3:
-                others = df_all[(df_all['max_corr'] < 0.85) & (~df_all['ticker'].isin([x['ticker'] for x in top3]))].sort_values('score', ascending=False).to_dict('records')
+                others = [x for x in candidates if x['ticker'] not in [t['ticker'] for t in top3]]
                 top3.extend(others[:3-len(top3)])
 
             gold_list = df_all[df_all['score'] >= 85].sort_values('score', ascending=False).to_dict('records')
-            excluded = df_all[(df_all['max_corr'] >= 0.85)].sort_values('score', ascending=False).head(15).to_dict('records')
+            excluded = df_all[df_all['max_corr'] >= 0.85].sort_values('score', ascending=False).head(15).to_dict('records')
         else: top3, gold_list, excluded = [], [], []
 
         self.generate_html(macro_results, my_status, top3, gold_list, scan_results, excluded)
