@@ -28,7 +28,6 @@ except: pass
 # ================= [자산 및 설정] =================
 CAPITAL_KRW = 23000000 
 RISK_RATIO = 0.01 
-AV_API_KEY = "I4VLTU5MYZY7RZL9"
 
 DATA_DIR = r"C:\Quant\Data"
 FIN_FILE = os.path.join(DATA_DIR, "financials.json")
@@ -54,15 +53,14 @@ class ExpertQuantSystem:
         self.risk_money = capital * RISK_RATIO
         self.market_regime = "neutral"
         
+        # 구버전/오염된 데이터 파일 초기화
         if os.path.exists(FIN_FILE):
             try:
                 with open(FIN_FILE, 'r') as f:
                     data = json.load(f)
-                    sample = next(iter(data.get('stocks', {})))
-                    if 'sector' not in data['stocks'][sample]:
-                        f.close()
-                        os.remove(FIN_FILE)
-            except: pass
+                    if not data.get('stocks'):
+                        f.close(); os.remove(FIN_FILE)
+            except: os.remove(FIN_FILE)
             
         self.financials = self.load_financials()
         
@@ -95,14 +93,35 @@ class ExpertQuantSystem:
         elif curr > ma200 and perf_1m > 0.03: return "uptrend"
         else: return "neutral"
 
+    def validate_ticker_realtime(self, ticker, info):
+        """[핵심] 실시간 데이터 검증 (좀비/상폐 차단)"""
+        try:
+            # 1. 가격 확인
+            if info.get('regularMarketPrice', 0) <= 0 and info.get('previousClose', 0) <= 0: return False
+            # 2. 거래소 확인 (미국 주요장)
+            # if info.get('exchange') not in ['NMS', 'NGS', 'NYQ', 'NCM', 'ASE']: return False # 너무 엄격하면 주석 처리
+            # 3. 거래량 확인 (유동성)
+            if info.get('averageVolume10days', 0) < 50000: return False
+            # 4. 상폐 키워드 확인
+            if 'delisted' in str(info.get('longName', '')).lower(): return False
+            
+            return True
+        except: return False
+
     def fetch_yf_info(self, ticker):
-        if ticker in self.financials and self.financials[ticker].get('roe') != 0:
+        if ticker in self.financials:
             return self.financials[ticker]
 
         stock = yf.Ticker(ticker)
         roe, sector = 0, "Unknown"
+        info = {}
+        
         try:
             info = stock.info
+            # [검증] 실시간 유효성 체크
+            if not self.validate_ticker_realtime(ticker, info):
+                return {'valid': False}
+                
             roe = info.get('returnOnEquity', 0)
             sector = info.get('sector', 'Unknown')
         except: pass
@@ -110,10 +129,10 @@ class ExpertQuantSystem:
         if roe == 0 or roe is None:
             try:
                 fin = stock.financials
-                bal = stock.balance_sheet
-                net_income = fin.loc['Net Income'].iloc[0]
-                equity = bal.loc['Stockholders Equity'].iloc[0]
-                if equity > 0: roe = net_income / equity
+                if not fin.empty:
+                    net_income = fin.loc['Net Income'].iloc[0]
+                    equity = stock.balance_sheet.loc['Stockholders Equity'].iloc[0]
+                    if equity > 0: roe = net_income / equity
             except: pass
             
         if roe is None: roe = 0
@@ -121,7 +140,8 @@ class ExpertQuantSystem:
         
         sector_map = {'Technology': '기술', 'Financial Services': '금융', 'Healthcare': '헬스케어', 'Consumer Cyclical': '임의소비재', 'Industrials': '산업재', 'Energy': '에너지', 'Consumer Defensive': '필수소비재', 'Basic Materials': '소재', 'Real Estate': '부동산', 'Communication Services': '통신', 'Utilities': '유틸리티'}
         sector = sector_map.get(sector, sector)
-        return {'roe': roe, 'sector': sector}
+        
+        return {'roe': roe, 'sector': sector, 'valid': True}
 
     def validate_data(self, df):
         if df is None or df.empty or len(df) < 150: return False
@@ -145,6 +165,8 @@ class ExpertQuantSystem:
         return df
 
     def calculate_adaptive_score(self, curr, df, spy_perf, roe, sector, max_corr=0):
+        # ... (기존 점수 로직 유지 - 코드 길이상 생략, 로직은 동일) ...
+        # 전체 로직은 동일하게 적용
         score = 0
         trend_score = 0
         if curr['Close'] > curr['ma200']:
@@ -179,8 +201,9 @@ class ExpertQuantSystem:
             
         base_score = trend_score + mom_score + qual_score + risk_score
         sector_risk = self.sector_risk_profile.get(sector, 'cyclical')
-        if sector_risk == 'defensive' and self.market_regime == 'downtrend': base_score += 5.0
-        elif sector_risk == 'growth' and self.market_regime == 'uptrend': base_score += 5.0
+        
+        if self.market_regime == 'downtrend' and sector_risk == 'defensive': base_score += 10.0
+        elif self.market_regime == 'uptrend' and sector_risk == 'growth': base_score += 10.0
             
         if max_corr > 0.6:
             if max_corr < 0.8: base_score -= (max_corr - 0.6) * 15
@@ -250,9 +273,9 @@ class ExpertQuantSystem:
             </div>
         </div>
 
-        <div class="card"><h2>🥇 최종 추천 TOP 3 (스마트 분산 + 매매 가이드)</h2>
-            <table><tr><th>종목</th><th>섹터</th><th>점수</th><th>현재가</th><th>수량</th><th>손절가(Cut)</th><th>익절가(Target)</th><th>상관성</th></tr>
-            {"".join(f"<tr><td><b>{r['ticker']}</b></td><td>{r['sector']}</td><td><span class='score-high'>{r['score']}점</span></td><td>${r['close']:.2f}</td><td><b>{r['qty']}주</b></td><td class='loss'>${r['stop']:.2f}</td><td class='profit'>${r['target']:.2f}</td><td>{r['max_corr']:.2f}</td></tr>" for r in top3)}
+        <div class="card"><h2>🥇 최종 추천 TOP 3 (섹터 분산: 분야별 1등)</h2>
+            <table><tr><th>종목</th><th>섹터</th><th>점수</th><th>ROE</th><th>현재가</th><th>수량</th><th>손절가(Cut)</th><th>익절가(Target)</th><th>상관성</th></tr>
+            {"".join(f"<tr><td><b>{r['ticker']}</b></td><td>{r['sector']}</td><td><span class='score-high'>{r['score']}점</span></td><td>{r['roe']}</td><td>${r['close']:.2f}</td><td><b>{r['qty']}주</b></td><td class='loss'>${r['stop']:.2f}</td><td class='profit'>${r['target']:.2f}</td><td>{r['max_corr']:.2f}</td></tr>" for r in top3)}
             </table></div>
 
         <div class="card"><h2>🌟 슈퍼리드 골든 리스트 (85점 이상)</h2>
@@ -261,8 +284,8 @@ class ExpertQuantSystem:
             </table></div>
 
         {"".join(f"<div class='card'><h2>[{name}] (총 {res['total']}개 중 {len(res['items'])}개 포착)</h2>" + 
-            "<table><tr><th>종목</th><th>섹터</th><th>점수</th><th>현재가</th><th>수량</th><th>손절가</th><th>익절가</th><th>3M수익</th></tr>" + 
-            "".join(f"<tr class='{'mine' if r.get('is_mine') else ''}'><td><b>{'🏆 ' + r['ticker'] if r.get('is_mine') else r['ticker']}</b></td><td>{r['sector']}</td><td>{r['score']}점</td><td>${r['close']:.2f}</td><td>{r['qty']}주</td><td>${r['stop']:.2f}</td><td>${r['target']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>" for r in res['items']) + 
+            "<table><tr><th>종목</th><th>섹터</th><th>점수</th><th>ROE</th><th>현재가</th><th>상관성</th><th>3M수익</th></tr>" + 
+            "".join(f"<tr class='{'mine' if r.get('is_mine') else ''}'><td><b>{'🏆 ' + r['ticker'] if r.get('is_mine') else r['ticker']}</b></td><td>{r['sector']}</td><td>{r['score']}점</td><td>{r['roe']}</td><td>${r['close']:.2f}</td><td>{r['max_corr']:.2f}</td><td>{r['perf_3m']:.1%}</td></tr>" for r in res['items']) + 
             "</table></div>" for name, res in scan_results.items())}
 
         <div class="card"><h2>⚠️ 중복 위험 종목 (Excluded)</h2>
@@ -286,16 +309,17 @@ class ExpertQuantSystem:
             print(f"\n[!!!] GitHub 업로드 실패: {e}")
 
     def run(self):
-        print(">>> [1/6] 시장 데이터 확보...")
+        print(">>> [1/6] 시장 상태 감지...")
         macro_results = {}
         try:
             macro_data = yf.download(list(MACRO_ASSETS.keys()), period="6mo", group_by='ticker', progress=False)
             for t, n in MACRO_ASSETS.items():
                 if t in macro_data.columns.levels[0]:
                     d = macro_data[t].dropna()
-                    curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
-                    status = "강세 ☀️" if curr > d['Close'].rolling(120).mean().iloc[-1] else "약세 ⛈️"
-                    macro_results[n] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
+                    if not d.empty:
+                        curr, prev = d['Close'].iloc[-1], d['Close'].iloc[-2]
+                        status = "강세 ☀️" if curr > d['Close'].rolling(120).mean().iloc[-1] else "약세 ⛈️"
+                        macro_results[n] = {'curr': curr, 'pct': (curr/prev-1)*100, 'status': status}
             if '^GSPC' in macro_data.columns.levels[0]:
                 self.market_regime = self.detect_market_regime(macro_data['^GSPC'])
                 print(f"   -> 시장 상태: {self.market_regime.upper()}")
@@ -338,6 +362,9 @@ class ExpertQuantSystem:
         scan_results, all_candidates = {}, []
         seen_tickers = set()
 
+        # [수정] 동적 상관성 기준 적용
+        corr_threshold = 0.45 if self.market_regime == 'downtrend' else 0.65
+
         for name, t_list in scans:
             found = []
             for t in tqdm(t_list, desc=name):
@@ -348,6 +375,9 @@ class ExpertQuantSystem:
                 if df is None: continue
                 
                 info = self.fetch_yf_info(t)
+                # 유효성 검증 실패 시 패스
+                if info.get('valid') == False: continue
+                
                 self.financials[t] = info
                 score = self.calculate_adaptive_score(df.iloc[-1], df, spy_perf, info['roe'], info['sector'])
                 
@@ -359,11 +389,10 @@ class ExpertQuantSystem:
                         corrs = [t_data.corr(h[-60:]) for h in holdings_data.values() if len(h) >= 60]
                         if corrs: max_corr = max(corrs)
                     
-                    # [핵심] 매매 가이드 계산
                     atr = df['atr'].iloc[-1]
                     close = df['Close'].iloc[-1]
                     stop_price = close - (2 * atr)
-                    target_price = close + (4 * atr) # 손익비 1:2
+                    target_price = close + (4 * atr) 
                     risk_per_share = (close - stop_price) * self.usd_krw
                     qty = int(self.risk_money / risk_per_share) if risk_per_share > 0 else 0
                     
@@ -382,22 +411,24 @@ class ExpertQuantSystem:
 
         with open(FIN_FILE, 'w') as f: json.dump({'update_date': datetime.now().strftime("%Y-%m-%d"), 'stocks': self.financials}, f)
 
-        # 추천 로직 (스마트 필터)
+        # [섹터 쿼터제]
         df_all = pd.DataFrame(all_candidates)
         if not df_all.empty:
             top3 = []
-            candidates = df_all[df_all['max_corr'] < 0.6].sort_values('score', ascending=False).to_dict('records')
+            # 1. 엄격한 상관성 필터 (시장 상황 반영)
+            candidates = df_all[df_all['max_corr'] < corr_threshold].sort_values('score', ascending=False).to_dict('records')
             picked_sectors = []
             for c in candidates:
                 if len(top3) >= 3: break
                 if c['sector'] not in picked_sectors:
                     top3.append(c); picked_sectors.append(c['sector'])
             
+            # 2. 부족하면 완화
             if len(top3) < 3:
                 others = df_all[(df_all['max_corr'] < 0.75) & (~df_all['ticker'].isin([x['ticker'] for x in top3]))].sort_values('score', ascending=False).to_dict('records')
                 top3.extend(others[:3-len(top3)])
-            
-            if len(top3) < 3: # 0.85로 최종 확장
+                
+            if len(top3) < 3:
                 others = df_all[(df_all['max_corr'] < 0.85) & (~df_all['ticker'].isin([x['ticker'] for x in top3]))].sort_values('score', ascending=False).to_dict('records')
                 top3.extend(others[:3-len(top3)])
 
