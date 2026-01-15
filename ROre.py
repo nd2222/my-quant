@@ -315,8 +315,8 @@ class ExpertQuantSystem:
         print(">>> [2/6] 유니버스 구성...")
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
-            sp_l = pd.read_html(io.StringIO(requests.get('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', headers=headers).text))[0]['Symbol'].str.replace('.', '-').tolist()
-            nq_l = pd.read_html(io.StringIO(requests.get('https://en.wikipedia.org/wiki/Nasdaq-100', headers=headers).text))[4]['Ticker'].tolist()
+            sp_l = pd.read_html(io.StringIO(requests.get('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies  ', headers=headers).text))[0]['Symbol'].str.replace('.', '-').tolist()
+            nq_l = pd.read_html(io.StringIO(requests.get('https://en.wikipedia.org/wiki/Nasdaq-100  ', headers=headers).text))[4]['Ticker'].tolist()
         except: 
             sp_l, nq_l = ['AAPL','MSFT','GOOG','AMZN','NVDA','JPM','PG','JNJ'], ['AAPL','MSFT','GOOGL','NVDA','PEP','COST']
         sox_l = ['AMD','ADI','ASML','AMAT','AVGO','INTC','KLAC','LRCX','MRVL','MU','NVDA','NXPI','ON','QCOM','STM','SWKS','TSM','TER','TXN']
@@ -438,4 +438,4 @@ if __name__ == "__main__":
         print(f"\n[오류] {e}")
         traceback.print_exc()
     finally:
-        input("\n[안내] 엔터를 누르면 종료합니다...")
+        input("\n[안내] 엔터를 누르면 종료합니다...") 
