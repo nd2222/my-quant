@@ -3,15 +3,12 @@
             body { background: #f0f2f5; font-family: 'Malgun Gothic', sans-serif; padding: 20px; color: #333; }
             .container { max-width: 1400px; margin: auto; }
             h1 { text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 15px; }
-            
             .market-alert { background: #2ecc71; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold; font-size: 1.2em; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-            
             .asset-dashboard { display: flex; justify-content: space-around; background: linear-gradient(135deg, #2c3e50, #34495e); color: white; padding: 15px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
             .asset-item { text-align: center; }
             .asset-label { font-size: 0.9em; opacity: 0.8; margin-bottom: 5px; }
             .asset-value { font-size: 1.4em; font-weight: bold; }
             .asset-sub { font-size: 0.8em; color: #f1c40f; }
-
             .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 3px 10px rgba(0,0,0,0.08); margin-bottom: 25px; }
             h2 { border-left: 6px solid #2c3e50; padding-left: 15px; color: #2c3e50; margin-top: 0; }
             .folder-header { font-size: 1.1em; font-weight: bold; color: white; margin-top: 25px; margin-bottom: 0; display: flex; align-items: center; background: #34495e; padding: 10px 15px; border-radius: 8px 8px 0 0; }
@@ -38,12 +35,14 @@
             .rs-detail { font-size: 0.85em; color: #666; margin-left: 5px; }
             .fund-cell { font-size: 0.85em; color: #555; line-height: 1.4; text-align: left; background: #fafafa; padding: 5px 10px; border-radius: 4px; }
         </style></head><body><div class="container">
-        <h1>📊 통합 퀀트 전략 보고서 V18.0 (Market Regime Defense)</h1>
+        <h1>📊 통합 퀀트 전략 보고서 V21.1 (Sniper Allocation Fixed)</h1>
         
         <div class="market-alert">
-            🟢 맑음 (Bull) (VIX: 17.75)<br>
+            🟢 맑음 (Bull) (VIX: 18.21)<br>
             <span style="font-size:0.8em; font-weight:normal;">📉 권장 현금 비중: 0% 이상</span>
         </div>
+        
+        <div class='card' style='border-left: 6px solid #9b59b6;'><h2>📋 포트폴리오 리밸런싱 제안 (Sniper Mode)</h2><p>※ <b>최소 1,000만원 집중 투자</b> 원칙을 적용한 AI 제안입니다.</p><h3>🔴 매도 권장 (Weak)</h3><table class='detail-table'><tr><th>종목</th><th>수량</th><th>예상 금액</th><th>매도 사유</th></tr><tr><td><b>TSLA</b></td><td>16주</td><td>985만원</td><td style='color:#c0392b;font-weight:bold'>점수 미달(22.6점), 추세 약세(RS 37.8)</td></tr></table><h3 style='margin-top:20px'>🔵 시나리오별 매수 제안</h3><div style='display:flex;gap:10px;'><div style='flex:1;background:#f8f9fa;padding:10px;border-radius:5px;border:1px solid #ddd'><h4>A. 보수적 (현금 중시)</h4><p>💰 현금 보유: 1,257만원</p><ul style='padding-left:20px'><li><b>LRCX</b>: 9주 (295만원)</li></ul></div><div style='flex:1;background:#f8f9fa;padding:10px;border-radius:5px;border:1px solid #ddd'><h4>B. 균형 (밸런스)</h4><p>💰 현금 보유: 786만원</p><ul style='padding-left:20px'><li><b>LRCX</b>: 23주 (755만원)</li></ul></div><div style='flex:1;background:#f8f9fa;padding:10px;border-radius:5px;border:1px solid #ddd'><h4>C. 공격 (집중 투자)</h4><p>💰 현금 보유: 157만원</p><ul style='padding-left:20px'><li><b>LRCX</b>: 43주 (1,411만원)</li></ul></div></div></div>
         
         <div class="asset-dashboard">
             <div class="asset-item">
@@ -53,26 +52,26 @@
             </div>
             <div class="asset-item">
                 <div class="asset-label">📈 주식 평가금</div>
-                <div class="asset-value">7,928만원</div>
+                <div class="asset-value">7,927만원</div>
                 <div class="asset-sub">현재 보유 주식 가치</div>
             </div>
             <div class="asset-item">
                 <div class="asset-label">💵 가용 현금</div>
-                <div class="asset-value">585만원</div>
+                <div class="asset-value">586만원</div>
                 <div class="asset-sub">즉시 사용 가능</div>
             </div>
             <div class="asset-item">
                 <div class="asset-label">🇺🇸 적용 환율</div>
-                <div class="asset-value">1,448.58원</div>
+                <div class="asset-value">1,448.42원</div>
                 <div class="asset-sub">실시간 환율</div>
             </div>
         </div>
         
-        <div class="card"><h2>🌍 글로벌 시장 현황</h2><table class='detail-table'><tr><th>지수</th><th>현재가</th><th>등락률</th><th>추세</th></tr><tr><td>S&P 500</td><td>6,941.81</td><td class='down'>-0.33%</td><td>상승추세 ☀️</td></tr><tr><td>나스닥 종합</td><td>23,102.47</td><td class='down'>-0.59%</td><td>상승추세 ☀️</td></tr><tr><td>다우 존스</td><td>50,188.14</td><td class='up'>+0.10%</td><td>상승추세 ☀️</td></tr><tr><td>러셀 2000</td><td>2,679.77</td><td class='down'>-0.35%</td><td>상승추세 ☀️</td></tr><tr><td>필라델피아 반도체</td><td>8,107.13</td><td class='down'>-0.68%</td><td>상승추세 ☀️</td></tr><tr><td>공포지수 (VIX)</td><td>17.75</td><td class='down'>-0.22%</td><td>상승추세 ☀️</td></tr><tr><td>금 (Gold)</td><td>462.40</td><td class='down'>-0.99%</td><td>상승추세 ☀️</td></tr><tr><td>은 (Silver)</td><td>83.47</td><td class='up'>+4.05%</td><td>상승추세 ☀️</td></tr><tr><td>WTI 원유</td><td>64.79</td><td class='up'>+1.30%</td><td>상승추세 ☀️</td></tr><tr><td>천연가스</td><td>3.13</td><td class='up'>+0.58%</td><td>하락추세 ⛈️</td></tr><tr><td>구리 (Copper)</td><td>5.95</td><td class='up'>+0.90%</td><td>상승추세 ☀️</td></tr><tr><td>미국채 10년물</td><td>4.15</td><td class='down'>-1.21%</td><td>상승추세 ☀️</td></tr><tr><td>달러 인덱스</td><td>96.58</td><td class='down'>-0.22%</td><td>하락추세 ⛈️</td></tr><tr><td>비트코인</td><td>66,945.64</td><td class='down'>-2.69%</td><td>하락추세 ⛈️</td></tr></table></div>
+        <div class="card"><h2>🌍 글로벌 시장 현황</h2><table class='detail-table'><tr><th>지수</th><th>현재가</th><th>등락률</th><th>추세</th></tr><tr><td>S&P 500</td><td>6,941.81</td><td class='down'>-0.33%</td><td>상승추세 ☀️</td></tr><tr><td>나스닥 종합</td><td>23,102.47</td><td class='down'>-0.59%</td><td>상승추세 ☀️</td></tr><tr><td>다우 존스</td><td>50,188.14</td><td class='up'>+0.10%</td><td>상승추세 ☀️</td></tr><tr><td>러셀 2000</td><td>2,679.77</td><td class='down'>-0.35%</td><td>상승추세 ☀️</td></tr><tr><td>필라델피아 반도체</td><td>8,107.13</td><td class='down'>-0.68%</td><td>상승추세 ☀️</td></tr><tr><td>공포지수 (VIX)</td><td>18.21</td><td class='up'>+2.36%</td><td>상승추세 ☀️</td></tr><tr><td>금 (Gold)</td><td>462.40</td><td class='down'>-0.99%</td><td>상승추세 ☀️</td></tr><tr><td>은 (Silver)</td><td>85.40</td><td class='up'>+6.47%</td><td>상승추세 ☀️</td></tr><tr><td>WTI 원유</td><td>64.80</td><td class='up'>+1.31%</td><td>상승추세 ☀️</td></tr><tr><td>천연가스</td><td>3.14</td><td class='up'>+0.77%</td><td>하락추세 ⛈️</td></tr><tr><td>구리 (Copper)</td><td>6.04</td><td class='up'>+2.50%</td><td>상승추세 ☀️</td></tr><tr><td>미국채 10년물</td><td>4.15</td><td class='down'>-1.21%</td><td>상승추세 ☀️</td></tr><tr><td>달러 인덱스</td><td>96.52</td><td class='down'>-0.29%</td><td>하락추세 ⛈️</td></tr><tr><td>비트코인</td><td>66,379.92</td><td class='down'>-3.51%</td><td>하락추세 ⛈️</td></tr></table></div>
         <div class="card"><h2>💼 [MY] 보유 종목 진단 (매도 기준)</h2>
         <p>※ <b>📉 트레일링 스탑</b>: 익절/청산 라인 (주가 상승 시 따라 올라감)<br>
            ※ <b>🛑 손절가 (2N)</b>: 진입 시 원금 보호를 위한 최후의 보루</p>
-        <table class='detail-table'><tr><th>종목 (그룹/산업)</th><th>매수가</th><th>현재가 / 점수</th><th>펀더멘털 지표 (PBR/PER/PSR/부채)</th><th>수익률</th><th>🛑 손절가(2N)</th><th>📉 트레일링 스탑</th><th>진단</th></tr><tr>
+        <table class='detail-table'><tr><th>종목 (그룹/산업)</th><th>매수가</th><th>현재가 / 점수</th><th>펀더멘털 지표 (PBR/PER/PSR/부채)</th><th>수익률</th><th>🛑 손절가(2N)</th><th>진단</th></tr><tr>
                 <td style="text-align:left">
                     <div style="font-weight:bold; font-size:1.1em">IEX</div>
                     <div style="font-size:0.8em; color:#666">S&P500 | Default</div>
@@ -88,7 +87,6 @@
             </div></td>
                 <td class='up'>14.9%</td>
                 <td style='color:#c0392b;font-weight:bold;font-size:1.1em'>$177.04</td>
-                <td style='color:#3498db;font-weight:bold;font-size:1.1em'>$193.69</td>
                 <td>HOLD</td>
             </tr><tr>
                 <td style="text-align:left">
@@ -106,8 +104,7 @@
             </div></td>
                 <td class='up'>7.1%</td>
                 <td style='color:#c0392b;font-weight:bold;font-size:1.1em'>$173.31</td>
-                <td style='color:#3498db;font-weight:bold;font-size:1.1em'>$175.44</td>
-                <td>HOLD</td>
+                <td>HOLD <br><span style='font-size:0.8em;color:red'>⚠️ 점수 미달</span></td>
             </tr><tr>
                 <td style="text-align:left">
                     <div style="font-weight:bold; font-size:1.1em">WDC</div>
@@ -124,7 +121,6 @@
             </div></td>
                 <td class='up'>16.7%</td>
                 <td style='color:#c0392b;font-weight:bold;font-size:1.1em'>$182.53</td>
-                <td style='color:#3498db;font-weight:bold;font-size:1.1em'>$237.58</td>
                 <td>HOLD</td>
             </tr><tr>
                 <td style="text-align:left">
@@ -142,8 +138,7 @@
             </div></td>
                 <td class='up'>5.3%</td>
                 <td style='color:#c0392b;font-weight:bold;font-size:1.1em'>$373.82</td>
-                <td style='color:#3498db;font-weight:bold;font-size:1.1em'>$387.53</td>
-                <td>HOLD</td>
+                <td>HOLD <br><span style='font-size:0.8em;color:red'>⚠️ 점수 미달</span></td>
             </tr><tr>
                 <td style="text-align:left">
                     <div style="font-weight:bold; font-size:1.1em">CAT</div>
@@ -160,7 +155,6 @@
             </div></td>
                 <td class='up'>1.8%</td>
                 <td style='color:#c0392b;font-weight:bold;font-size:1.1em'>$682.89</td>
-                <td style='color:#3498db;font-weight:bold;font-size:1.1em'>$628.98</td>
                 <td>HOLD</td>
             </tr><tr>
                 <td style="text-align:left">
@@ -178,8 +172,7 @@
             </div></td>
                 <td class='up'>8.7%</td>
                 <td style='color:#c0392b;font-weight:bold;font-size:1.1em'>$13.80</td>
-                <td style='color:#3498db;font-weight:bold;font-size:1.1em'>$12.92</td>
-                <td>HOLD</td>
+                <td>HOLD <br><span style='font-size:0.8em;color:red'>⚠️ 점수 미달</span></td>
             </tr><tr>
                 <td style="text-align:left">
                     <div style="font-weight:bold; font-size:1.1em">XOM</div>
@@ -196,7 +189,6 @@
             </div></td>
                 <td class='up'>1.1%</td>
                 <td style='color:#c0392b;font-weight:bold;font-size:1.1em'>$143.68</td>
-                <td style='color:#3498db;font-weight:bold;font-size:1.1em'>$134.71</td>
                 <td>HOLD</td>
             </tr></table></div>
         <div class="card section-intersection"><h2>🎯 [교집합] 강력 추천 (Turtle + Expert)</h2>
