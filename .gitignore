@@ -1,0 +1,119 @@
+# ================= [퀀트 시스템 .gitignore] =================
+# V24.9 - GitHub 업로드용
+
+# ================= [절대 업로드 금지] =================
+# 데이터 캐시 (용량 큼, 매번 생성됨)
+Data/
+data/
+Cache/
+*.json
+!config.json.example
+*.db
+*.sqlite
+*.pkl
+*.parquet
+*.csv
+!requirements.txt
+
+# 리포트 (매일 생성됨)
+Reports/
+reports/
+*.html
+*.htm
+
+# 차트 (이미지 파일)
+Charts/
+charts/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.pdf
+
+# 설정 파일 (API 키 포함)
+config.json
+*.env
+.env.local
+.env.production
+secrets.json
+api_keys.json
+holdings.csv
+positions.csv
+portfolio.csv
+
+# 로그 (매번 생성됨)
+*.log
+logs/
+Log/
+backtest_logs/
+backtest_data/
+
+# ================= [Python] =================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ================= [가상환경] =================
+venv/
+ENV/
+env/
+.venv
+.env
+
+# ================= [IDE] =================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ================= [OS] =================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ================= [백업] =================
+*.bak
+*.backup
+*.old
+.config_backups/
+all/
+
+# ================= [임시] =================
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ================= [테스트] =================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ================= [Jupyter] =================
+.ipynb_checkpoints
+*.ipynb
